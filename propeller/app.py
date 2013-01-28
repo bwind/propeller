@@ -43,7 +43,7 @@ class Application(object):
         server.bind((self.host, self.port))
         server.listen(1000)
 
-        self.logger.info('* Listening on %s:%d' % (self.host, self.port))
+        self.logger.info('* Propeller %s Listening on %s:%d' % (propeller.__version__, self.host, self.port))
 
         self.loop = Loop()
         self.loop.register(server, Loop.READ)
@@ -77,15 +77,14 @@ class Application(object):
                             """
                             request = Request(data)
                             request.ip = addr[0]
-                            handler = self.handle_request(request)
+                            response = self.handle_request(request)
 
-                            message = \
-                                self.get_response_headers(handler.response)
-                            message += handler.response.body
+                            message = self.get_response_headers(response)
+                            message += response.body
                             output_buffer[fd].put(message)
 
                             self.loop.register(sock, Loop.WRITE)
-                            self.log_request(request, handler.response)
+                            self.log_request(request, response)
 
                         else:
                             """Interpret empty result as an EOF from
@@ -112,8 +111,7 @@ class Application(object):
 
                 # Handle "exceptional conditions"
                 elif mode & Loop.ERROR:
-                    print 'handling exceptional condition for', \
-                        sock.fileno()
+                    self.logger.error('Exception on', sock.fileno())
                     # Stop listening for input on the connection
                     self.loop.unregister(sock, Loop.READ)
                     self.loop.unregister(sock, Loop.WRITE)
@@ -137,21 +135,23 @@ class Application(object):
         """Figure out which RequestHandler to invoke.
         """
         handler = None
+        response = Response()
         for u in self.urls:
             m = re.match(u[0], request.url)
             if m:
-                handler = u[1](request)
+                handler = u[1]()
         if not handler:
-            handler = RequestHandler(request)
-            handler.response.set_status_code(404)
+            handler = RequestHandler()
+            response.set_status_code(404)
 
-            t = self.tpl_env.get_template('error.html')
-            handler.response.body = t.render(**{
-                'title': 'Not found',
-                'subtitle': request.url,
-                'traceback': None,
-                'version': propeller.__version__
-            })
+            if self.debug:
+                t = self.tpl_env.get_template('error.html')
+                response.body = t.render(
+                    title='Not found',
+                    subtitle=request.url,
+                    traceback=None,
+                    version=propeller.__version__
+                )
         else:
             method = request.method.lower()
             args = m.groups() if m else ()
@@ -159,12 +159,18 @@ class Application(object):
 
             body = ''
             if not hasattr(handler, method):
-                handler.response.set_status_code(404)
+                response.set_status_code(404)
             else:
                 try:
-                    getattr(handler, method)(*args, **kwargs)
+                    res = getattr(handler, method)(request, *args, **kwargs)
+                    assert isinstance(res, Response) is True, \
+                        'RequestHandler did not return instance of Response'
+                    response = res
                 except Exception, e:
-                    handler.response.set_status_code(500)
+                    """Handle uncaught exception from the
+                    RequestHandler.
+                    """
+                    response.set_status_code(500)
 
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     tb = ''.join([t for t \
@@ -173,20 +179,20 @@ class Application(object):
                         traceback.extract_tb(exc_tb)[-1]
 
                     if not self.debug:
-                        handler.response.body = ''
+                        response.body = ''
                     else:
                         t = self.tpl_env.get_template('error.html')
-                        handler.response.body = t.render(**{
-                            'title': '%s: %s' % (exc_type.__name__, e),
-                            'subtitle': '%s, line %d' % (fname, lineno),
-                            'traceback': tb,
-                            'version': propeller.__version__
-                        })
+                        response.body = t.render(
+                            title='%s: %s' % (exc_type.__name__, e),
+                            subtitle='%s, line %d' % (fname, lineno),
+                            traceback=tb,
+                            version=propeller.__version__
+                        )
 
                     self.logger.error('%s: %s\n%s' % (exc_type.__name__, e,
                                                       tb.strip()))
 
-        return handler
+        return response
 
     def log_request(self, request, response):
         ms = '%0.2fms' % round(request.execution_time * 1000, 2)

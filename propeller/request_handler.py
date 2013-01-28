@@ -2,12 +2,8 @@ from propeller.response import Response
 
 
 class RequestHandler(object):
-    def __init__(self, request):
-        self.request = request
-        self.response = Response()
-
     def __handle(self, method):
-        return ''
+        return Response('')
 
     def get(self, *args, **kwargs):
         return self.__handle('get')

@@ -2,10 +2,10 @@ from propeller.util.multidict import MultiDict
 
 
 class Response(object):
-    def __init__(self):
+    def __init__(self, body=''):
         self.__status_code = 200
         self.headers = MultiDict()
-        self.body = ''
+        self.body = body
 
     def set_status_code(self, status_code):
         assert status_code >= 200 and status_code <= 500

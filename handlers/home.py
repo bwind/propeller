@@ -1,6 +1,6 @@
-from propeller import RequestHandler
+from propeller import RequestHandler, Response
 
 
 class HomeHandler(RequestHandler):
-    def get(self, test, **kwargs):
-        self.response.body = 'hoi, jij bent... %s' % self.request.headers['User-Agent']
+    def get(self, request, test):
+        return Response('hoi, jij bent<html>\'\'... %s' % request.headers['User-Agent'][0])

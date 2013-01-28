@@ -108,7 +108,7 @@ class KqueueLoop(_Loop):
 
 if hasattr(select, 'epoll'):
     Loop = select.epoll
-if hasattr(select, 'kqueue'):
+elif hasattr(select, 'kqueue'):
     Loop = KqueueLoop
 else:
     """Fall back to select().

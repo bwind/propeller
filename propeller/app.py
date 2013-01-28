@@ -41,13 +41,14 @@ class Application(object):
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.setblocking(0)
         server.bind((self.host, self.port))
-        self.logger.info('* Running on %s:%d' % (self.host, self.port))
         server.listen(1000)
+
+        self.logger.info('* Listening on %s:%d' % (self.host, self.port))
 
         self.loop = Loop()
         self.loop.register(server, Loop.READ)
 
-        self.message_queues = {}
+        output_buffer = {}
 
         while True:
             events = self.loop.poll()
@@ -64,7 +65,7 @@ class Application(object):
                         conn.setblocking(0)
                         self.loop.register(conn, Loop.READ)
 
-                        self.message_queues[conn.fileno()] = Queue.Queue()
+                        output_buffer[conn.fileno()] = Queue.Queue()
                     else:
                         try:
                             data = sock.recv(1024)
@@ -81,7 +82,7 @@ class Application(object):
                             message = \
                                 self.get_response_headers(handler.response)
                             message += handler.response.body
-                            self.message_queues[fd].put(message)
+                            output_buffer[fd].put(message)
 
                             self.loop.register(sock, Loop.WRITE)
                             self.log_request(request, handler.response)
@@ -94,7 +95,7 @@ class Application(object):
                             self.loop.unregister(sock, Loop.WRITE)
                             self.loop.close_socket(sock)
                             try:
-                                del self.message_queues[fd]
+                                del output_buffer[fd]
                             except:
                                 pass
 
@@ -103,7 +104,7 @@ class Application(object):
                     """This socket is available for writing.
                     """
                     try:
-                        next_msg = self.message_queues[fd].get_nowait()
+                        next_msg = output_buffer[fd].get_nowait()
                     except Queue.Empty:
                         self.loop.unregister(sock, Loop.WRITE)
                     else:
@@ -118,7 +119,7 @@ class Application(object):
                     self.loop.unregister(sock, Loop.WRITE)
                     self.loop.close_socket(sock)
                     try:
-                        del self.message_queues[fd]
+                        del output_buffer[fd]
                     except:
                         pass
 

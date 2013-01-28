@@ -106,6 +106,8 @@ class KqueueLoop(_Loop):
         return events.items()
 
 
+if hasattr(select, 'epoll'):
+    Loop = select.epoll
 if hasattr(select, 'kqueue'):
     Loop = KqueueLoop
 else:

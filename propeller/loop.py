@@ -33,7 +33,7 @@ class SelectLoop(_Loop):
     def poll(self):
         readable, writeable, errors = select.select(self.readable,
                                                     self.writeable,
-                                                    self.readable)
+                                                    self.errors)
 
         events = {}
         for r in readable:
@@ -47,26 +47,30 @@ class SelectLoop(_Loop):
 
 class KqueueLoop(_Loop):
     def __init__(self):
-        self._kqueue = select.kqueue()
-        self._active = {}
+        self.__kqueue = select.kqueue()
+        self.__sockets = {}
 
-    def close(self):
-        self._kqueue.close()
-        self._active = {}
+    def get_sockets(self):
+        return self.__sockets
 
-    def register(self, sock, events):
-        self._active[sock.fileno()] = sock
-        self._control(sock.fileno(), events, select.KQ_EV_ADD)
+    def close_socket(self, sock):
+        fd = sock.fileno()
+        sock.close()
+        del self.__sockets[fd]
 
-    def unregister(self, sock, events=None):
-        self._control(sock.fileno(), events, select.KQ_EV_DELETE)
+    def register(self, sock, event):
+        self.__sockets[sock.fileno()] = sock
+        self.__control(sock.fileno(), event, select.KQ_EV_ADD)
 
-    def _control(self, fd, events, flags):
+    def unregister(self, sock, event=None):
+        self.__control(sock.fileno(), event, select.KQ_EV_DELETE)
+
+    def __control(self, fd, event, flags):
         kevents = []
-        if events & Loop.WRITE:
+        if event & Loop.WRITE:
             kevents.append(select.kevent(fd, filter=select.KQ_FILTER_WRITE,
                                          flags=flags))
-        if events & Loop.READ or not kevents:
+        if event & Loop.READ or not kevents:
             # Always read when there is not a write
             kevents.append(select.kevent(fd, filter=select.KQ_FILTER_READ,
                                          flags=flags))
@@ -74,16 +78,16 @@ class KqueueLoop(_Loop):
         # on Mac OS X (10.6) when there is more than one event in the list.
         for kevent in kevents:
             try:
-                self._kqueue.control([kevent], 0)
+                self.__kqueue.control([kevent], 0)
             except OSError:
                 pass
 
     def poll(self):
-        kevents = self._kqueue.control(None, 1000)
+        kevents = self.__kqueue.control(None, 1000)
         events = {}
         for e in kevents:
             fd = e.ident
-            sock = self._active[fd]
+            sock = self.__sockets[fd]
             if e.filter == select.KQ_FILTER_READ:
                 events[sock] = Loop.READ
             elif e.filter == select.KQ_FILTER_WRITE:
@@ -93,32 +97,8 @@ class KqueueLoop(_Loop):
                     events[sock] = Loop.WRITE
             elif e.flags & select.KQ_EV_ERROR:
                 events[sock] = Loop.ERROR
-
         return events.items()
 
-        """
-        kevents = self._kqueue.control(None, 1000)
-        events = {}
-        for kevent in kevents:
-            fd = kevent.ident
-            if kevent.filter == select.KQ_FILTER_READ:
-                events[fd] = events.get(fd, 0) | Loop.READ
-            if kevent.filter == select.KQ_FILTER_WRITE:
-                if kevent.flags & select.KQ_EV_EOF:
-                    # If an asynchronous connection is refused, kqueue
-                    # returns a write event with the EOF flag set.
-                    # Turn this into an error for consistency with the
-                    # other IOLoop implementations.
-                    # Note that for read events, EOF may be returned before
-                    # all data has been consumed from the socket buffer,
-                    # so we only check for EOF on write events.
-                    events[fd] = Loop.ERROR
-                else:
-                    events[fd] = events.get(fd, 0) | Loop.WRITE
-            if kevent.flags & select.KQ_EV_ERROR:
-                events[fd] = events.get(fd, 0) | Loop.ERROR
-        return events.items()
-        """
 
 if hasattr(select, 'kqueue'):
     Loop = KqueueLoop

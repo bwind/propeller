@@ -46,13 +46,15 @@ h2 {
 
 <body>
 <div id="header">
-<h1>{{ exception }}: {{ message }}</h1>
-<h2>{{ filename }}, line {{ lineno }}</h2>
+<h1>{{ title }}</h1>
+<h2>{{ subtitle }}</h2>
 </div>
+{% if traceback %}
 <div id="traceback">
     <pre>
 {{ traceback }}</pre>
 </div>
+{% endif %}
 <div id="footer">
     Propeller HTTP Framework {{ version }}
 </div>

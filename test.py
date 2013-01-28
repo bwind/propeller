@@ -15,7 +15,6 @@ class Connection(object):
 
     def __init__(self, sock, address, loop):
         self.sock = sock
-        self.address = address
         self.sock.setblocking(0)
         self.buf = ""
         self.watcher = pyev.Io(self.sock._sock, pyev.EV_READ, loop, self.io_cb)

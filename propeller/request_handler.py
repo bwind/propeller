@@ -9,14 +9,20 @@ class RequestHandler(object):
     def __handle(self, method):
         return ''
 
-    def get(self):
+    def get(self, *args, **kwargs):
         return self.__handle('get')
 
-    def post(self):
+    def post(self, *args, **kwargs):
         return self.__handle('post')
 
-    def put(self):
+    def put(self, *args, **kwargs):
         return self.__handle('put')
 
-    def delete(self):
+    def delete(self, *args, **kwargs):
         return self.__handle('delete')
+
+    def head(self, *args, **kwargs):
+        return self.__handle('head')
+
+    def options(self, *args, **kwargs):
+        return self.__handle('options')

@@ -37,15 +37,15 @@ class Application(object):
             self.__run()
 
     def __run(self):
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server.setblocking(0)
-        self.server.bind((self.host, self.port))
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.setblocking(0)
+        server.bind((self.host, self.port))
         self.logger.info('* Running on %s:%d' % (self.host, self.port))
         server.listen(1000)
 
         self.loop = Loop()
-        self.loop.register(self.server, Loop.READ)
+        self.loop.register(server, Loop.READ)
 
         self.message_queues = {}
 
@@ -53,15 +53,14 @@ class Application(object):
             events = self.loop.poll()
 
             for sock, mode in events:
-
                 fd = sock.fileno()
 
-                if mode == Loop.READ:
-                    if sock == self.server:
+                if mode & Loop.READ:
+                    if sock == server:
                         """A readable socket server is available to accept
                         a connection.
                         """
-                        conn, addr = self.server.accept()
+                        conn, addr = server.accept()
                         conn.setblocking(0)
                         self.loop.register(conn, Loop.READ)
 
@@ -79,53 +78,59 @@ class Application(object):
                             request.ip = addr[0]
                             handler = self.handle_request(request)
 
-                            message = self.get_response_headers(handler.response)
+                            message = \
+                                self.get_response_headers(handler.response)
                             message += handler.response.body
                             self.message_queues[fd].put(message)
 
                             self.loop.register(sock, Loop.WRITE)
-
                             self.log_request(request, handler.response)
 
                         else:
-                            """Interpret empty result as a closed connection.
+                            """Interpret empty result as an EOF from
+                            the client.
                             """
                             self.loop.unregister(sock, Loop.READ)
                             self.loop.unregister(sock, Loop.WRITE)
-                            sock.close()
+                            self.loop.close_socket(sock)
                             try:
                                 del self.message_queues[fd]
                             except:
                                 pass
 
                 # Handle outputs
-                elif mode == Loop.WRITE:
+                elif mode & Loop.WRITE:
+                    """This socket is available for writing.
+                    """
                     try:
                         next_msg = self.message_queues[fd].get_nowait()
                     except Queue.Empty:
-                        print 'empty queue', sock.fileno()
                         self.loop.unregister(sock, Loop.WRITE)
                     else:
                         sock.send(next_msg)
 
                 # Handle "exceptional conditions"
-                elif mode == Loop.ERROR:
-                    print 'handling exceptional condition for', sock.getpeername()
+                elif mode & Loop.ERROR:
+                    print 'handling exceptional condition for', \
+                        sock.fileno()
                     # Stop listening for input on the connection
                     self.loop.unregister(sock, Loop.READ)
                     self.loop.unregister(sock, Loop.WRITE)
-                    sock.close()
+                    self.loop.close_socket(sock)
                     try:
                         del self.message_queues[fd]
                     except:
                         pass
 
+
     def get_response_headers(self, response):
         response.headers['Content-Length'] = len(response.body)
         response.headers['Content-Type'] = 'text/html; charset=utf-8'
 
-        status = 'HTTP/1.1 %d %s' % (response.status_code, httplib.responses[response.status_code])
-        return '\r\n'.join([status] + ['%s: %s' % (k, v) for k, v in response.headers.items()]) + '\r\n\r\n'
+        status = 'HTTP/1.1 %d %s' % (response.status_code,
+                                     httplib.responses[response.status_code])
+        return '\r\n'.join([status] + ['%s: %s' % (k, v) for k, v \
+            in response.headers.items()]) + '\r\n\r\n'
 
     def handle_request(self, request):
         """Figure out which RequestHandler to invoke.
@@ -139,46 +144,57 @@ class Application(object):
             handler = RequestHandler(request)
             handler.response.set_status_code(404)
 
-        method = request.method.lower()
-        args = m.groups() if m else ()
-
-        body = ''
-        if not hasattr(handler, method):
-            handler.response.set_status_code(404)
+            t = self.tpl_env.get_template('error.html')
+            handler.response.body = t.render(**{
+                'title': 'Not found',
+                'subtitle': request.url,
+                'traceback': None,
+                'version': propeller.__version__
+            })
         else:
-            try:
-                getattr(handler, method)(*args)
-            except Exception, e:
-                handler.response.set_status_code(500)
+            method = request.method.lower()
+            args = m.groups() if m else ()
+            kwargs = u[2] if len(u) > 2 else {}
 
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                tb = ''.join([t for t in traceback.format_tb(exc_tb, limit=11)[1:]])
-                fname, lineno, func, err = traceback.extract_tb(exc_tb)[-1]
+            body = ''
+            if not hasattr(handler, method):
+                handler.response.set_status_code(404)
+            else:
+                try:
+                    getattr(handler, method)(*args, **kwargs)
+                except Exception, e:
+                    handler.response.set_status_code(500)
 
-                if not self.debug:
-                    handler.response.body = ''
-                else:
-                    t = self.tpl_env.get_template('error.html')
-                    handler.response.body = t.render(**{
-                        'exception': exc_type.__name__,
-                        'message': e,
-                        'filename': fname,
-                        'lineno': lineno,
-                        'traceback': tb,
-                        'version': propeller.__version__
-                    })
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    tb = ''.join([t for t \
+                        in traceback.format_tb(exc_tb, limit=11)[1:]])
+                    fname, lineno, func, err = \
+                        traceback.extract_tb(exc_tb)[-1]
 
-                self.logger.error('%s: %s\n%s' % (exc_type.__name__, e, tb.strip()))
+                    if not self.debug:
+                        handler.response.body = ''
+                    else:
+                        t = self.tpl_env.get_template('error.html')
+                        handler.response.body = t.render(**{
+                            'title': '%s: %s' % (exc_type.__name__, e),
+                            'subtitle': '%s, line %d' % (fname, lineno),
+                            'traceback': tb,
+                            'version': propeller.__version__
+                        })
+
+                    self.logger.error('%s: %s\n%s' % (exc_type.__name__, e,
+                                                      tb.strip()))
 
         return handler
 
     def log_request(self, request, response):
         ms = '%0.2fms' % round(request.execution_time * 1000, 2)
-        self.logger.info(' '.join([
+        log = ' '.join([
             str(response.status_code),
             request.method,
             str(len(response.body)),
             request.url,
             ms,
             '(%s)' % request.ip
-        ]))
+        ])
+        self.logger.info(log)

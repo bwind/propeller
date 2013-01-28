@@ -42,7 +42,7 @@ class Application(object):
         self.server.setblocking(0)
         self.server.bind((self.host, self.port))
         self.logger.info('* Running on %s:%d' % (self.host, self.port))
-        self.server.listen(0)
+        server.listen(1000)
 
         self.loop = Loop()
         self.loop.register(self.server, Loop.READ)
@@ -67,7 +67,10 @@ class Application(object):
 
                         self.message_queues[conn.fileno()] = Queue.Queue()
                     else:
-                        data = sock.recv(1024)
+                        try:
+                            data = sock.recv(1024)
+                        except socket.error:
+                            continue
 
                         if data:
                             """A readable client socket has data.

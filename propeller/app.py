@@ -100,6 +100,7 @@ class Application(object):
                     try:
                         next_msg = self.message_queues[fd].get_nowait()
                     except Queue.Empty:
+                        print 'empty queue', sock.fileno()
                         self.loop.unregister(sock, Loop.WRITE)
                     else:
                         sock.send(next_msg)

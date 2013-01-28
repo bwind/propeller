@@ -48,25 +48,30 @@ class SelectLoop(_Loop):
 class KqueueLoop(_Loop):
     def __init__(self):
         self._kqueue = select.kqueue()
+        self._active = {}
 
     def close(self):
         self._kqueue.close()
+        self._active = {}
 
-    def register(self, fd, events):
-        self._control(fd, events, select.KQ_EV_ADD)
+    def register(self, sock, events):
+        print 'Registering', sock.fileno()
+        self._active[sock.fileno()] = sock
+        self._control(sock.fileno(), events, select.KQ_EV_ADD)
 
-    def unregister(self, fd, events=None):
-        self._control(fd, events, select.KQ_EV_DELETE)
+    def unregister(self, sock, events=None):
+        print 'Unregistering', sock.fileno()
+        self._control(sock.fileno(), events, select.KQ_EV_DELETE)
 
     def _control(self, fd, events, flags):
         kevents = []
         if events & Loop.WRITE:
-            kevents.append(select.kevent(
-                    fd, filter=select.KQ_FILTER_WRITE, flags=flags))
+            kevents.append(select.kevent(fd, filter=select.KQ_FILTER_WRITE,
+                                         flags=flags))
         if events & Loop.READ or not kevents:
             # Always read when there is not a write
-            kevents.append(select.kevent(
-                    fd, filter=select.KQ_FILTER_READ, flags=flags))
+            kevents.append(select.kevent(fd, filter=select.KQ_FILTER_READ,
+                                         flags=flags))
         # Even though control() takes a list, it seems to return EINVAL
         # on Mac OS X (10.6) when there is more than one event in the list.
         for kevent in kevents:
@@ -80,15 +85,16 @@ class KqueueLoop(_Loop):
         events = {}
         for e in kevents:
             fd = e.ident
+            sock = self._active[fd]
             if e.filter == select.KQ_FILTER_READ:
-                events[fd] = Loop.READ
+                events[sock] = Loop.READ
             elif e.filter == select.KQ_FILTER_WRITE:
                 if e.flags & select.KQ_EV_EOF:
-                    events[fd] = Loop.ERROR
+                    events[sock] = Loop.ERROR
                 else:
-                    events[fd] = Loop.WRITE
+                    events[sock] = Loop.WRITE
             elif e.flags & select.KQ_EV_ERROR:
-                events[fd] = Loop.ERROR
+                events[sock] = Loop.ERROR
 
         return events.items()
 
@@ -117,7 +123,7 @@ class KqueueLoop(_Loop):
         """
 
 if hasattr(select, 'kqueue'):
-    Loop = SelectLoop
+    Loop = KqueueLoop
 else:
     """Fall back to select().
     """

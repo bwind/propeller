@@ -14,6 +14,12 @@ class SelectLoop(_Loop):
         self.writeable = set()
         self.errors = set()
 
+    def close_socket(self, sock):
+        self.unregister(sock, Loop.READ)
+        self.unregister(sock, Loop.WRITE)
+        self.unregister(sock, Loop.ERROR)
+        sock.close()
+
     def register(self, sock, event):
         if event & self.READ:
             self.readable.add(sock)

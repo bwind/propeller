@@ -37,81 +37,84 @@ class Application(object):
             self.__run()
 
     def __run(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.setblocking(0)
-        self.sock.bind((self.host, self.port))
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server.setblocking(0)
+        self.server.bind((self.host, self.port))
         self.logger.info('* Running on %s:%d' % (self.host, self.port))
-        self.sock.listen(0)
+        self.server.listen(0)
 
-        self.inputs = [self.sock]
-        self.outputs = []
+        self.loop = Loop()
+        self.loop.register(self.server, Loop.READ)
 
         self.message_queues = {}
 
-        self.loop = Loop()
-        self.loop.readable = [self.sock]
-
         while True:
-            (sread, swrite, sexc) = select.select(self.inputs, self.outputs, self.inputs)
+            events = self.loop.poll()
 
-            for s in sread:
+            for sock, mode in events:
 
-                if s == self.sock:
-                    """A readable socket server is available to accept
-                    a connection.
-                    """
-                    conn, addr = s.accept()
-                    conn.setblocking(0)
-                    self.inputs.append(conn)
+                fd = sock.fileno()
 
-                    self.message_queues[conn] = Queue.Queue()
-                else:
-                    data = s.recv(1048576)
-
-                    if data:
-                        """A readable client socket has data.
+                if mode == Loop.READ:
+                    if sock == self.server:
+                        """A readable socket server is available to accept
+                        a connection.
                         """
-                        request = Request(data)
-                        request.ip = addr[0]
-                        handler = self.handle_request(request)
+                        conn, addr = self.server.accept()
+                        conn.setblocking(0)
+                        self.loop.register(conn, Loop.READ)
 
-                        message = self.get_response_headers(handler.response)
-                        message += handler.response.body
-                        self.message_queues[s].put(message)
-
-                        if s not in self.outputs:
-                            self.outputs.append(s)
-
-                        self.log_request(request, handler.response)
-
+                        self.message_queues[conn.fileno()] = Queue.Queue()
                     else:
-                        """Interpret empty result as a closed connection.
-                        """
-                        if s in self.outputs:
-                            self.outputs.remove(s)
-                        self.inputs.remove(s)
-                        s.close()
-                        del self.message_queues[s]
+                        data = sock.recv(1024)
 
-            # Handle outputs
-            for s in swrite:
-                try:
-                    next_msg = self.message_queues[s].get_nowait()
-                except Queue.Empty:
-                    self.outputs.remove(s)
-                else:
-                    s.send(next_msg)
+                        if data:
+                            """A readable client socket has data.
+                            """
+                            request = Request(data)
+                            request.ip = addr[0]
+                            handler = self.handle_request(request)
 
-            # Handle "exceptional conditions"
-            for s in sexc:
-                print 'handling exceptional condition for', s.getpeername()
-                # Stop listening for input on the connection
-                self.inputs.remove(s)
-                if s in self.outputs:
-                    self.outputs.remove(s)
-                s.close()
-                del self.message_queues[s]
+                            message = self.get_response_headers(handler.response)
+                            message += handler.response.body
+                            self.message_queues[fd].put(message)
+
+                            self.loop.register(sock, Loop.WRITE)
+
+                            self.log_request(request, handler.response)
+
+                        else:
+                            """Interpret empty result as a closed connection.
+                            """
+                            self.loop.unregister(sock, Loop.READ)
+                            self.loop.unregister(sock, Loop.WRITE)
+                            sock.close()
+                            try:
+                                del self.message_queues[fd]
+                            except:
+                                pass
+
+                # Handle outputs
+                elif mode == Loop.WRITE:
+                    try:
+                        next_msg = self.message_queues[fd].get_nowait()
+                    except Queue.Empty:
+                        self.loop.unregister(sock, Loop.WRITE)
+                    else:
+                        sock.send(next_msg)
+
+                # Handle "exceptional conditions"
+                elif mode == Loop.ERROR:
+                    print 'handling exceptional condition for', sock.getpeername()
+                    # Stop listening for input on the connection
+                    self.loop.unregister(sock, Loop.READ)
+                    self.loop.unregister(sock, Loop.WRITE)
+                    sock.close()
+                    try:
+                        del self.message_queues[fd]
+                    except:
+                        pass
 
     def get_response_headers(self, response):
         response.headers['Content-Length'] = len(response.body)

@@ -55,12 +55,10 @@ class KqueueLoop(_Loop):
         self._active = {}
 
     def register(self, sock, events):
-        print 'Registering', sock.fileno()
         self._active[sock.fileno()] = sock
         self._control(sock.fileno(), events, select.KQ_EV_ADD)
 
     def unregister(self, sock, events=None):
-        print 'Unregistering', sock.fileno()
         self._control(sock.fileno(), events, select.KQ_EV_DELETE)
 
     def _control(self, fd, events, flags):

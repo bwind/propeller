@@ -1,11 +1,40 @@
 <!DOCTYPE html>
 
 <html>
+
 <head>
-</title></title>
+    <title>Propeller HTTP Framework</title>
+    <link rel="stylesheet" type="text/css" href="/static/css/default.css">
+<!--[if !IE 7]>
+    <style type="text/css">
+        #container {
+            display: table;
+            height:100%;
+        }
+    </style>
+<![endif]-->
 </head>
 
 <body>
-{{ content }}
+<div id="container">
+    <div id="header">
+        <img src="/static/img/logo.png" id="logo" alt="">
+    </div>
+    <div id="content">
+        <div id="text">
+{{ content|safe }}
+        </div>
+        <ul id="nav">
+            <li><a href="#">Home</a></li>
+            <li><a href="#">Downloads</a></li>
+            <li><a href="#">Documentation</a></li>
+        </ul>
+    </div>
+</div>
+<div id="footer">
+    <div id="footer-container">
+    </div>
+</div>
 </body>
+
 </html>

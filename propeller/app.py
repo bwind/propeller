@@ -129,7 +129,8 @@ class Application(object):
 
     def get_response_headers(self, response):
         response.headers['Content-Length'] = len(response.body)
-        response.headers['Content-Type'] = 'text/html; charset=utf-8'
+        if 'Content-Type' not in response.headers:
+            response.headers['Content-Type'] = 'text/html; charset=utf-8'
 
         status = 'HTTP/1.1 %d %s' % (response.status_code,
                                      httplib.responses[response.status_code])
@@ -145,6 +146,7 @@ class Application(object):
             m = re.match(u[0], request.url)
             if m:
                 handler = u[1]()
+                break
         if not handler:
             """Request URL did not match any of the urls. Invoke the
             base RequestHandler and return a 404.
@@ -210,8 +212,8 @@ class Application(object):
         log = ' '.join([
             str(response.status_code),
             request.method,
-            str(len(response.body)),
             request.url,
+            str(len(response.body)),
             ms,
             '(%s)' % request.ip
         ])

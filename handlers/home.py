@@ -1,6 +1,7 @@
-from propeller import RequestHandler, Response
+from propeller import RequestHandler, Response, Template
 
 
 class HomeHandler(RequestHandler):
     def get(self, request, test):
-        return Response('hoi, jij bent<html>\'\'... %s' % request.headers['User-Agent'][0])
+        tpl_vars = {'content': 'foo'}
+        return Response(Template('layout.html', tpl_vars))

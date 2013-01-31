@@ -3,7 +3,7 @@ from jinja2 import Environment, PackageLoader
 
 class Template(object):
     env = None
-    def __init__(self, template, tpl_vars):
+    def __init__(self, template, tpl_vars={}):
         self.__template = template
         self.__tpl_vars = tpl_vars
         self.__compiled = None

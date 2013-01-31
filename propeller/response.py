@@ -1,5 +1,9 @@
+from propeller.options import Options
 from propeller.template import Template
 from propeller.util.multidict import MultiDict
+
+import httplib
+import propeller
 
 
 class Response(object):
@@ -7,12 +11,12 @@ class Response(object):
     __status_code = 200
     headers = MultiDict()
 
-    def __init__(self, body=''):
-        if isinstance(body, str):
-            self.__body = body
-        elif isinstance(body, Template):
-            self.__body = str(body)
+    def __init__(self, body='', status_code=200,
+                 content_type='text/html; charset=utf-8'):
+        self.body = body
+        self.status_code = status_code
         self.headers = MultiDict()
+        self.headers['Content-Type'] = content_type
 
     def __get_status_code(self):
         return self.__status_code
@@ -26,13 +30,47 @@ class Response(object):
         return self.__body
 
     def __set_body(self, body):
-        self.__body = body
+        assert isinstance(body, basestring) or isinstance(body, Template), \
+            'body must be an instance of basestring or Template'
+        if isinstance(body, basestring):
+            self.__body = body
+        elif isinstance(body, Template):
+            self.__body = str(body)
+
+    def _build_headers(self):
+        self.headers['Content-Length'] = len(self.body)
+        if 'Content-Type' not in self.headers:
+            self.headers['Content-Type'] = 'text/html; charset=utf-8'
+        status = 'HTTP/1.1 %d %s' % (self.status_code,
+                                     httplib.responses[self.status_code])
+        headers = '\r\n'.join([status] + ['%s: %s' % (k, v) for k, v \
+            in self.headers.items()]) + '\r\n\r\n'
+        return headers
+
+    def _error_page(self, title, subtitle, traceback=None):
+        t = Options.tpl_env.get_template('error.html')
+        return t.render(
+            title=title,
+            subtitle=subtitle,
+            traceback=traceback,
+            version=propeller.__version__
+        )
+
+    def __str__(self):
+        return self._build_headers() + self.body
 
     status_code = property(__get_status_code, __set_status_code)
     body = property(__get_body, __set_body)
 
 
 class NotFoundResponse(Response):
-    def __init__(self, *args, **kwargs):
-        super(Response, self).__init__(*args, **kwargs)
-        self.status_code = 404
+    def __init__(self, request, *args, **kwargs):
+        super(NotFoundResponse, self).__init__(status_code=404,
+                                               *args,
+                                               **kwargs)
+        self.request = request
+
+    def __str__(self):
+        if not self.body and Options.debug:
+            self.body = self._error_page('Not found', self.request.url)
+        return self._build_headers() + self.body

@@ -1,7 +1,8 @@
 from jinja2 import Environment, FileSystemLoader, PackageLoader
 from propeller.loop import Loop
+from propeller.options import Options
 from propeller.reloader import Reloader
-from propeller.response import Response
+from propeller.response import *
 from propeller.request import Request
 from propeller.request_handler import RequestHandler
 from propeller.template import Template
@@ -20,14 +21,18 @@ import Queue
 
 
 class Application(object):
-    def __init__(self, host='127.0.0.1', port=8080, urls=(), debug=False,
+    def __init__(self, urls=(), host='127.0.0.1', port=8080, debug=False,
                  tpl_dir='templates'):
+        self.urls = urls
         self.host = host
         self.port = port
         self.urls = urls
-        self.debug = debug
-        self.tpl_dir = tpl_dir
 
+        Options.debug = debug
+        Options.tpl_env = Environment(loader=PackageLoader('propeller', \
+            'templates'), autoescape=True)
+
+        self.tpl_dir = tpl_dir
         self.logger = logging.getLogger(__name__)
         logging.basicConfig(level=logging.INFO,
                             format='[%(asctime)s] %(message)s')
@@ -36,15 +41,12 @@ class Application(object):
                                    autoescape=True)
 
     def run(self):
-        if self.debug:
+        if Options.debug:
             Reloader.run_with_reloader(self, self.__run)
         else:
             self.__run()
 
     def __run(self):
-        self.tpl_env = Environment(loader=PackageLoader('propeller', \
-            'templates'), autoescape=True)
-
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.setblocking(0)
@@ -87,10 +89,7 @@ class Application(object):
                             request = Request(data)
                             request.ip = addr[0]
                             response = self.handle_request(request)
-
-                            message = self.get_response_headers(response)
-                            message += response.body
-                            output_buffer[fd].put(message)
+                            output_buffer[fd].put(str(response))
 
                             self.loop.register(sock, Loop.WRITE)
                             self.log_request(request, response)
@@ -127,52 +126,33 @@ class Application(object):
                     except:
                         pass
 
-    def get_response_headers(self, response):
-        response.headers['Content-Length'] = len(response.body)
-        if 'Content-Type' not in response.headers:
-            response.headers['Content-Type'] = 'text/html; charset=utf-8'
-
-        status = 'HTTP/1.1 %d %s' % (response.status_code,
-                                     httplib.responses[response.status_code])
-        return '\r\n'.join([status] + ['%s: %s' % (k, v) for k, v \
-            in response.headers.items()]) + '\r\n\r\n'
-
     def handle_request(self, request):
-        """Figure out which RequestHandler to invoke.
+        """Iterates over self.urls to match the requested URL and stops
+        after the first match.
         """
         handler = None
-        response = Response()
-        for u in self.urls:
-            m = re.match(u[0], request.url)
-            if m:
-                handler = u[1]()
+        for url in self.urls:
+            match = re.match(url[0], request.url)
+            if match:
+                handler = url[1]()
                 break
         if not handler:
             """Request URL did not match any of the urls. Invoke the
             base RequestHandler and return a 404.
             """
-            handler = RequestHandler()
-            response.status_code = 404
-
-            if self.debug:
-                t = self.tpl_env.get_template('error.html')
-                response.body = t.render(
-                    title='Not found',
-                    subtitle=request.url,
-                    traceback=None,
-                    version=propeller.__version__
-                )
+            return NotFoundResponse(request)
         else:
             method = request.method.lower()
-            args = m.groups() if m else ()
-            kwargs = u[2] if len(u) > 2 else {}
+            args = match.groups() if match else ()
+            kwargs = url[2] if len(url) > 2 else {}
 
             body = ''
-            if not hasattr(handler, method):
+            if not hasattr(handler, method) and request.method in \
+                RequestHandler.supported_methods:
                 """The HTTP method was not defined in the handler.
                 Return a 404.
                 """
-                response.status_code = 404
+                return NotFoundResponse(request)
             else:
                 try:
                     res = getattr(handler, method)(request, *args, **kwargs)
@@ -191,16 +171,9 @@ class Application(object):
                     fname, lineno, func, err = \
                         traceback.extract_tb(exc_tb)[-1]
 
-                    if not self.debug:
-                        response.body = ''
-                    else:
-                        t = self.tpl_env.get_template('error.html')
-                        response.body = t.render(
-                            title='%s: %s' % (exc_type.__name__, e),
-                            subtitle='%s, line %d' % (fname, lineno),
-                            traceback=tb,
-                            version=propeller.__version__
-                        )
+                    title = '%s: %s' % (exc_type.__name__, e)
+                    subtitle = '%s, line %d' % (fname, lineno)
+                    return self.get_error_response(500, title, subtitle, tb)
 
                     self.logger.error('%s: %s\n%s' % (exc_type.__name__, e,
                                                       tb.strip()))

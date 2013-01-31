@@ -1,6 +1,6 @@
 from propeller import RequestHandler, Response, Template
 
 
-class HomeHandler(RequestHandler):
+class DocsHandler(RequestHandler):
     def get(self, request):
-        return Response(Template('home.html'))
+        return Response(Template('docs.html'))

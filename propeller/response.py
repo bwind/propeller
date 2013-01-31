@@ -1,6 +1,6 @@
 from propeller.options import Options
 from propeller.template import Template
-from propeller.util.multidict import MultiDict
+from propeller.util.dict import MultiDict
 
 import httplib
 import propeller
@@ -47,7 +47,7 @@ class Response(object):
             in self.headers.items()]) + '\r\n\r\n'
         return headers
 
-    def _error_page(self, title, subtitle, traceback=None):
+    def _error_page(self, title, subtitle='', traceback=None):
         t = Options.tpl_env.get_template('error.html')
         return t.render(
             title=title,
@@ -63,14 +63,39 @@ class Response(object):
     body = property(__get_body, __set_body)
 
 
+class BadRequestResponse(Response):
+    def __init__(self):
+        super(BadRequestResponse, self).__init__(status_code=400)
+
+    def __str__(self):
+        if not self.body and Options.debug:
+            self.body = self._error_page('Bad Request')
+        return self._build_headers() + self.body
+
+
 class NotFoundResponse(Response):
     def __init__(self, request, *args, **kwargs):
-        super(NotFoundResponse, self).__init__(status_code=404,
-                                               *args,
-                                               **kwargs)
+        super(NotFoundResponse, self).__init__(status_code=404)
         self.request = request
 
     def __str__(self):
         if not self.body and Options.debug:
-            self.body = self._error_page('Not found', self.request.url)
+            self.body = self._error_page('Not Found', self.request.url)
         return self._build_headers() + self.body
+
+
+class InternalServerErrorResponse(Response):
+    def __init__(self, request, title, subtitle, traceback, *args, **kwargs):
+        super(InternalServerErrorResponse, self).__init__(status_code=500)
+        self.request = request
+        self.title = title
+        self.subtitle = subtitle
+        self.traceback = traceback
+
+    def __str__(self):
+        if not self.body and Options.debug:
+            self.body = self._error_page(self.title,
+                                         self.subtitle,
+                                         self.traceback)
+        return self._build_headers() + self.body
+

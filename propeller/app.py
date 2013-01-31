@@ -86,9 +86,18 @@ class Application(object):
                         if data:
                             """A readable client socket has data.
                             """
-                            request = Request(data)
-                            request.ip = addr[0]
-                            response = self.handle_request(request)
+                            try:
+                                request = Request(data=data, ip=addr[0])
+                            except:
+                                """Any type of exception is considered
+                                as an invalid request and means we're
+                                returning a 400 Bad Request.
+                                """
+                                request = Request(ip=addr[0])
+                                response = BadRequestResponse()
+                            else:
+                                response = self.handle_request(request)
+
                             output_buffer[fd].put(str(response))
 
                             self.loop.register(sock, Loop.WRITE)
@@ -147,7 +156,7 @@ class Application(object):
             kwargs = url[2] if len(url) > 2 else {}
 
             body = ''
-            if not hasattr(handler, method) and request.method in \
+            if not hasattr(handler, method) or request.method not in \
                 RequestHandler.supported_methods:
                 """The HTTP method was not defined in the handler.
                 Return a 404.
@@ -155,16 +164,16 @@ class Application(object):
                 return NotFoundResponse(request)
             else:
                 try:
-                    res = getattr(handler, method)(request, *args, **kwargs)
-                    assert isinstance(res, Response) is True, \
+                    response = getattr(handler, method)(request,
+                                                        *args,
+                                                        **kwargs)
+                    assert isinstance(response, Response), \
                         'RequestHandler did not return instance of Response'
-                    response = res
+                    return response
                 except Exception, e:
                     """Handle uncaught exception from the
                     RequestHandler.
                     """
-                    response.status_code = 500
-
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     tb = ''.join([t for t \
                         in traceback.format_tb(exc_tb, limit=11)[1:]])
@@ -173,18 +182,22 @@ class Application(object):
 
                     title = '%s: %s' % (exc_type.__name__, e)
                     subtitle = '%s, line %d' % (fname, lineno)
-                    return self.get_error_response(500, title, subtitle, tb)
 
-                    self.logger.error('%s: %s\n%s' % (exc_type.__name__, e,
-                                                      tb.strip()))
+                    message = '%s: %s\n%s' % (exc_type.__name__, e, tb)
+                    self.logger.error(message.strip())
 
-        return response
+                    return InternalServerErrorResponse(request,
+                                                       title,
+                                                       subtitle,
+                                                       tb)
 
     def log_request(self, request, response):
         ms = '%0.2fms' % round(request.execution_time * 1000, 2)
+        method = request.method if request.method in \
+            RequestHandler.supported_methods else '-'
         log = ' '.join([
             str(response.status_code),
-            request.method,
+            method,
             request.url,
             str(len(response.body)),
             ms,

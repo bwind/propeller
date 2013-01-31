@@ -5,8 +5,8 @@ class HomeHandler(RequestHandler):
         return Response('Hello, World!')
 
 a = Application([
-    (r'^/', HomeHandler),
-])
+    (r'^/$', HomeHandler),
+], debug=True)
 
 if __name__ == '__main__':
     a.run()

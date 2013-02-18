@@ -7,10 +7,6 @@ import propeller
 
 
 class Response(object):
-    __body = ''
-    __status_code = 200
-    headers = MultiDict()
-
     def __init__(self, body='', status_code=200,
                  content_type='text/html; charset=utf-8'):
         self.body = body
@@ -63,13 +59,25 @@ class Response(object):
     body = property(__get_body, __set_body)
 
 
+class RedirectResponse(Response):
+    def __init__(self, redirect_url, permanent=False):
+        status_code = 301 if permanent else 302
+        super(RedirectResponse, self).__init__(status_code=status_code)
+        self.redirect_url = redirect_url
+
+    def __str__(self):
+        if 'Location' not in self.headers:
+            self.headers['Location'] = self.redirect_url
+        return self._build_headers() + self.body
+
+
 class BadRequestResponse(Response):
     def __init__(self):
         super(BadRequestResponse, self).__init__(status_code=400)
 
     def __str__(self):
         if not self.body and Options.debug:
-            self.body = self._error_page('Bad Request')
+            self.body = self._error_page(httplib.responses[self.status_code])
         return self._build_headers() + self.body
 
 
@@ -80,7 +88,8 @@ class NotFoundResponse(Response):
 
     def __str__(self):
         if not self.body and Options.debug:
-            self.body = self._error_page('Not Found', self.request.url)
+            self.body = self._error_page(httplib.responses[self.status_code],
+                                         self.request.url)
         return self._build_headers() + self.body
 
 

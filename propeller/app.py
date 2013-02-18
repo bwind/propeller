@@ -88,7 +88,7 @@ class Application(object):
                             """
                             try:
                                 request = Request(data=data, ip=addr[0])
-                            except:
+                            except TypeError:
                                 """Any type of exception is considered
                                 as an invalid request and means we're
                                 returning a 400 Bad Request.

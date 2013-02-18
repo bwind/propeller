@@ -60,44 +60,46 @@ class Response(object):
 
 
 class RedirectResponse(Response):
-    def __init__(self, redirect_url, permanent=False):
+    def __init__(self, redirect_url, permanent=False, *args, **kwargs):
         status_code = 301 if permanent else 302
-        super(RedirectResponse, self).__init__(status_code=status_code)
+        super(RedirectResponse, self).__init__(status_code=status_code, *args,
+                                               **kwargs)
         self.redirect_url = redirect_url
 
     def __str__(self):
         if 'Location' not in self.headers:
             self.headers['Location'] = self.redirect_url
-        return self._build_headers() + self.body
+        return super(RedirectResponse, self).__str__()
 
 
 class BadRequestResponse(Response):
-    def __init__(self):
-        super(BadRequestResponse, self).__init__(status_code=400)
+    def __init__(self, *args, **kwargs):
+        super(BadRequestResponse, self).__init__(status_code=400, *args,
+                                                 **kwargs)
 
     def __str__(self):
         if not self.body and Options.debug:
             self.body = self._error_page(httplib.responses[self.status_code])
-        return self._build_headers() + self.body
+        return super(BadRequestResponse, self).__str__()
 
 
 class NotFoundResponse(Response):
-    def __init__(self, request=None, *args, **kwargs):
-        super(NotFoundResponse, self).__init__(status_code=404)
-        self.request = request
+    def __init__(self, url=None, *args, **kwargs):
+        super(NotFoundResponse, self).__init__(status_code=404, *args,
+                                               **kwargs)
+        self.url = url
 
     def __str__(self):
         if not self.body and Options.debug:
-            url = self.request.url if hasattr(self.request, 'url') else ''
             self.body = self._error_page(httplib.responses[self.status_code],
-                                         url)
-        return self._build_headers() + self.body
+                                         self.url)
+        return super(NotFoundResponse, self).__str__()
 
 
 class InternalServerErrorResponse(Response):
-    def __init__(self, request=None, title, subtitle, traceback, *args, **kwargs):
-        super(InternalServerErrorResponse, self).__init__(status_code=500)
-        self.request = request
+    def __init__(self, title, subtitle, traceback, *args, **kwargs):
+        super(InternalServerErrorResponse, self).__init__(status_code=500,
+                                                          *args, **kwargs)
         self.title = title
         self.subtitle = subtitle
         self.traceback = traceback
@@ -107,5 +109,5 @@ class InternalServerErrorResponse(Response):
             self.body = self._error_page(self.title,
                                          self.subtitle,
                                          self.traceback)
-        return self._build_headers() + self.body
+        return super(InternalServerErrorResponse, self).__str__()
 

@@ -149,7 +149,7 @@ class Application(object):
             """Request URL did not match any of the urls. Invoke the
             base RequestHandler and return a 404.
             """
-            return NotFoundResponse(request)
+            return NotFoundResponse(request.url)
         else:
             method = request.method.lower()
             args = match.groups() if match else ()
@@ -186,10 +186,7 @@ class Application(object):
                     message = '%s: %s\n%s' % (exc_type.__name__, e, tb)
                     self.logger.error(message.strip())
 
-                    return InternalServerErrorResponse(request,
-                                                       title,
-                                                       subtitle,
-                                                       tb)
+                    return InternalServerErrorResponse(title, subtitle, tb)
 
     def log_request(self, request, response):
         ms = '%0.2fms' % round(request.execution_time * 1000, 2)

@@ -82,19 +82,20 @@ class BadRequestResponse(Response):
 
 
 class NotFoundResponse(Response):
-    def __init__(self, request, *args, **kwargs):
+    def __init__(self, request=None, *args, **kwargs):
         super(NotFoundResponse, self).__init__(status_code=404)
         self.request = request
 
     def __str__(self):
         if not self.body and Options.debug:
+            url = self.request.url if hasattr(self.request, 'url') else ''
             self.body = self._error_page(httplib.responses[self.status_code],
-                                         self.request.url)
+                                         url)
         return self._build_headers() + self.body
 
 
 class InternalServerErrorResponse(Response):
-    def __init__(self, request, title, subtitle, traceback, *args, **kwargs):
+    def __init__(self, request=None, title, subtitle, traceback, *args, **kwargs):
         super(InternalServerErrorResponse, self).__init__(status_code=500)
         self.request = request
         self.title = title

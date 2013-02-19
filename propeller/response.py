@@ -1,6 +1,9 @@
+from datetime import timedelta
+from propeller.cookie import Cookie
 from propeller.options import Options
 from propeller.template import Template
 from propeller.util.dict import MultiDict
+from urllib import quote
 
 import httplib
 import propeller
@@ -12,6 +15,7 @@ class Response(object):
         self.body = body
         self.status_code = status_code
         self.headers = MultiDict()
+        self.cookies = []
         self.headers['Content-Type'] = content_type
 
     def __get_status_code(self):
@@ -39,8 +43,10 @@ class Response(object):
             self.headers['Content-Type'] = 'text/html; charset=utf-8'
         status = 'HTTP/1.1 %d %s' % (self.status_code,
                                      httplib.responses[self.status_code])
-        headers = '\r\n'.join([status] + ['%s: %s' % (k, v) for k, v \
-            in self.headers.items()]) + '\r\n\r\n'
+
+        headers = ['%s: %s' % (k, v) for k, v in self.headers.items()]
+        headers += ['Set-Cookie: %s' % str(c) for c in self.cookies]
+        headers = '\r\n'.join([status] + headers) + '\r\n\r\n'
         return headers
 
     def _error_page(self, title, subtitle='', traceback=None):
@@ -51,6 +57,11 @@ class Response(object):
             traceback=traceback,
             version=propeller.__version__
         )
+
+    def set_cookie(self, name, value, domain=None, expires=None, path=None,
+                   secure=False):
+        self.cookies.append(Cookie(name=name, value=value, domain=domain,
+                                   expires=expires, path=path, secure=secure))
 
     def __str__(self):
         return self._build_headers() + self.body

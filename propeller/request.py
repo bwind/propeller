@@ -1,3 +1,4 @@
+from propeller.cookie import Cookie
 from propeller.util.dict import ImmutableMultiDict, ImmutableDict
 
 import time
@@ -21,7 +22,7 @@ class Request(object):
 
             # Parse headers and cookies
             headers = []
-            cookies = {}
+            self.cookies = []
             for h in data[1:]:
                 if not h:
                     break
@@ -32,11 +33,10 @@ class Request(object):
                     except ValueError:
                         pass
                     else:
-                        cookies[cname] = cval
+                        self.cookies.append(Cookie(name=cname, value=cval))
                 else:
                     headers.append((k, v))
             self.headers = ImmutableMultiDict(headers)
-            self.cookies = ImmutableDict(cookies)
 
             # Parse GET variables
             self.get = self.__parse_request_data(querystring)
@@ -45,7 +45,7 @@ class Request(object):
             self.post = self.__parse_request_data(self.body)
         else:
             self.headers = ImmutableMultiDict()
-            self.cookies = ImmutableDict()
+            self.cookies = []
             self.get = ImmutableMultiDict()
             self.post = ImmutableMultiDict()
 

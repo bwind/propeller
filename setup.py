@@ -1,4 +1,4 @@
-from distutils.core import setup
+from setuptools import setup
 
 setup(
     name='Propeller',
@@ -6,6 +6,7 @@ setup(
     author='Bas Wind',
     author_email='mailtobwind@gmail.com',
     packages=['propeller'],
+    include_package_data=True,
     scripts=[],
     url='http://pypi.python.org/pypi/Propeller/',
     license='LICENSE.txt',

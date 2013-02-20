@@ -4,6 +4,7 @@ README.txt
 setup.py
 propeller/__init__.py
 propeller/app.py
+propeller/cookie.py
 propeller/loop.py
 propeller/options.py
 propeller/reloader.py
@@ -11,3 +12,6 @@ propeller/request.py
 propeller/request_handler.py
 propeller/response.py
 propeller/template.py
+propeller/templates/error.html
+propeller/util/__init__.py
+propeller/util/dict.py

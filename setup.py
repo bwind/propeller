@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name='Propeller',
-    version='0.1.0',
+    version='0.1.1',
     author='Bas Wind',
     author_email='mailtobwind@gmail.com',
     packages=['propeller'],

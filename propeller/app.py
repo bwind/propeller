@@ -156,12 +156,12 @@ class Application(object):
             kwargs = url[2] if len(url) > 2 else {}
 
             body = ''
-            if not hasattr(handler, method) or request.method not in \
-                RequestHandler.supported_methods:
+            if request.method not in RequestHandler.supported_methods or \
+                not hasattr(handler, method):
                 """The HTTP method was not defined in the handler.
                 Return a 404.
                 """
-                return NotFoundResponse(request)
+                return NotFoundResponse(request.url)
             else:
                 try:
                     response = getattr(handler, method)(request,

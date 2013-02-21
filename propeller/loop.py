@@ -7,6 +7,11 @@ class _Loop(object):
     WRITE = 0x004
     ERROR = 0x008 | 0x010
 
+    def close_socket(self, sock):
+        fd = sock.fileno()
+        sock.close()
+        del self.__sockets[fd]
+
 
 class SelectLoop(_Loop):
     def __init__(self):
@@ -15,9 +20,9 @@ class SelectLoop(_Loop):
         self.errors = set()
 
     def close_socket(self, sock):
-        self.unregister(sock, Loop.READ)
-        self.unregister(sock, Loop.WRITE)
-        self.unregister(sock, Loop.ERROR)
+        self.unregister(sock, self.READ)
+        self.unregister(sock, self.WRITE)
+        self.unregister(sock, self.ERROR)
         sock.close()
 
     def register(self, sock, event):
@@ -43,26 +48,39 @@ class SelectLoop(_Loop):
 
         events = {}
         for r in readable:
-            events[r] = Loop.READ
+            events[r] = self.READ
         for w in writeable:
-            events[w] = Loop.WRITE
+            events[w] = self.WRITE
         for e in errors:
-            events[e] = Loop.ERROR
+            events[e] = self.ERROR
         return events.items()
+
+
+class EpollLoop(_Loop):
+    def __init__(self):
+        self.__epoll = select.epoll()
+        self.__sockets = {}
+
+    def register(self, sock, event):
+        if sock.fileno() not in self.__sockets:
+            self.__sockets[sock.fileno()] = sock
+            self.__epoll.register(sock.fileno())
+
+    def unregister(self, sock, event):
+        return self.__epoll.unregister(sock.fileno())
+
+    def poll(self):
+        ret = {}
+        events = self.__epoll.poll()
+        for e in events:
+            ret[self.__sockets[e[0]]] = e[1]
+        return ret.items()
 
 
 class KqueueLoop(_Loop):
     def __init__(self):
         self.__kqueue = select.kqueue()
         self.__sockets = {}
-
-    def get_sockets(self):
-        return self.__sockets
-
-    def close_socket(self, sock):
-        fd = sock.fileno()
-        sock.close()
-        del self.__sockets[fd]
 
     def register(self, sock, event):
         self.__sockets[sock.fileno()] = sock
@@ -73,10 +91,10 @@ class KqueueLoop(_Loop):
 
     def __control(self, fd, event, flags):
         kevents = []
-        if event & Loop.WRITE:
+        if event & self.WRITE:
             kevents.append(select.kevent(fd, filter=select.KQ_FILTER_WRITE,
                                          flags=flags))
-        if event & Loop.READ or not kevents:
+        if event & self.READ or not kevents:
             # Always read when there is not a write
             kevents.append(select.kevent(fd, filter=select.KQ_FILTER_READ,
                                          flags=flags))
@@ -95,19 +113,19 @@ class KqueueLoop(_Loop):
             fd = e.ident
             sock = self.__sockets[fd]
             if e.filter == select.KQ_FILTER_READ:
-                events[sock] = Loop.READ
+                events[sock] = self.READ
             elif e.filter == select.KQ_FILTER_WRITE:
                 if e.flags & select.KQ_EV_EOF:
-                    events[sock] = Loop.ERROR
+                    events[sock] = self.ERROR
                 else:
-                    events[sock] = Loop.WRITE
+                    events[sock] = self.WRITE
             elif e.flags & select.KQ_EV_ERROR:
-                events[sock] = Loop.ERROR
+                events[sock] = self.ERROR
         return events.items()
 
 
 if hasattr(select, 'epoll'):
-    Loop = select.epoll
+    Loop = EpollLoop
 elif hasattr(select, 'kqueue'):
     Loop = KqueueLoop
 else:

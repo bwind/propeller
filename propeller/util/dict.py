@@ -1,4 +1,4 @@
-class MultiDict(object):
+class MultiDict(dict):
     def __init__(self):
         self._items = {}
 
@@ -14,8 +14,14 @@ class MultiDict(object):
         else:
             super(MultiDict, self).__setitem__(name, value)
 
+    def __eq__(self, other):
+        return other == self._items
+
     def __repr__(self):
         return repr(self._items)
+
+    def __len__(self):
+        return len(self._items)
 
     def __iter__(self):
         for k in self._items:
@@ -44,8 +50,14 @@ class ImmutableDict(object):
     def __init__(self, items={}):
         self._items = items
 
+    def __eq__(self, other):
+        return other == self._items
+
     def __repr__(self):
         return repr(self._items)
+
+    def __len__(self):
+        return len(self._items)
 
     def __iter__(self):
         for k in self._items.keys():

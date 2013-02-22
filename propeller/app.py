@@ -32,7 +32,7 @@ class Application(object):
         Options.tpl_env = Environment(loader=PackageLoader('propeller', \
             'templates'), autoescape=True)
 
-        self.tpl_dir = tpl_dir
+        self.tpl_dir = os.path.join(sys.path[0], tpl_dir)
         self.logger = logging.getLogger(__name__)
         logging.basicConfig(level=logging.INFO,
                             format='[%(asctime)s] %(message)s')

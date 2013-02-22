@@ -10,7 +10,7 @@ class _Loop(object):
     def close_socket(self, sock):
         fd = sock.fileno()
         sock.close()
-        del self.__sockets[fd]
+        del self._sockets[fd]
 
 
 class SelectLoop(_Loop):
@@ -59,11 +59,11 @@ class SelectLoop(_Loop):
 class EpollLoop(_Loop):
     def __init__(self):
         self.__epoll = select.epoll()
-        self.__sockets = {}
+        self._sockets = {}
 
     def register(self, sock, event):
-        if sock.fileno() not in self.__sockets:
-            self.__sockets[sock.fileno()] = sock
+        if sock.fileno() not in self._sockets:
+            self._sockets[sock.fileno()] = sock
             self.__epoll.register(sock.fileno())
 
     def unregister(self, sock, event):
@@ -73,17 +73,17 @@ class EpollLoop(_Loop):
         ret = {}
         events = self.__epoll.poll()
         for e in events:
-            ret[self.__sockets[e[0]]] = e[1]
+            ret[self._sockets[e[0]]] = e[1]
         return ret.items()
 
 
 class KqueueLoop(_Loop):
     def __init__(self):
         self.__kqueue = select.kqueue()
-        self.__sockets = {}
+        self._sockets = {}
 
     def register(self, sock, event):
-        self.__sockets[sock.fileno()] = sock
+        self._sockets[sock.fileno()] = sock
         self.__control(sock.fileno(), event, select.KQ_EV_ADD)
 
     def unregister(self, sock, event=None):
@@ -111,7 +111,7 @@ class KqueueLoop(_Loop):
         events = {}
         for e in kevents:
             fd = e.ident
-            sock = self.__sockets[fd]
+            sock = self._sockets[fd]
             if e.filter == select.KQ_FILTER_READ:
                 events[sock] = self.READ
             elif e.filter == select.KQ_FILTER_WRITE:

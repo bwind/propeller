@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='Propeller',
-    version='0.1.5',
+    version='0.1.6',
     author='Bas Wind',
     author_email='mailtobwind@gmail.com',
     packages=['propeller'],

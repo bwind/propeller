@@ -1,11 +1,9 @@
 from setuptools import setup
 
-import propeller
-
 
 setup(
     name='Propeller',
-    version=propeller.__version__,
+    version='0.1.5',
     author='Bas Wind',
     author_email='mailtobwind@gmail.com',
     packages=['propeller'],

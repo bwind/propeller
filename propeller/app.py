@@ -42,6 +42,7 @@ class Application(object):
 
     def run(self):
         if Options.debug:
+            # Run Propeller with reloader
             Reloader.run_with_reloader(self, self.__run)
         else:
             self.__run()
@@ -53,7 +54,7 @@ class Application(object):
         server.bind((self.host, self.port))
         server.listen(1000)
 
-        self.logger.info('* Propeller %s Listening on %s:%d' % \
+        self.logger.info('* Propeller %s listening on %s:%d' % \
             (propeller.__version__, self.host, self.port))
 
         self.loop = Loop()
@@ -70,9 +71,8 @@ class Application(object):
 
                 if mode & Loop.READ:
                     if sock == server:
-                        """A readable socket server is available to accept
-                        a connection.
-                        """
+                        # A readable socket server is available to
+                        # accept a connection.
                         conn, addr = server.accept()
                         conn.setblocking(0)
                         self.loop.register(conn, Loop.READ)
@@ -84,15 +84,13 @@ class Application(object):
                         except socket.error:
                             continue
                         if data:
-                            """A readable client socket has data.
-                            """
+                            # A readable client socket has data.
                             try:
                                 request = Request(data=data, ip=addr[0])
-                            except TypeError:
-                                """Any type of exception is considered
-                                as an invalid request and means we're
-                                returning a 400 Bad Request.
-                                """
+                            except Exception:
+                                # Any type of exception is considered
+                                # as an invalid request and means we're
+                                # returning a 400 Bad Request.
                                 request = Request(ip=addr[0])
                                 response = BadRequestResponse()
                             else:
@@ -103,9 +101,8 @@ class Application(object):
                             self.loop.register(sock, Loop.WRITE)
                             self.log_request(request, response)
                         else:
-                            """Interpret empty result as an EOF from
-                            the client.
-                            """
+                            # Interpret empty result as an EOF from the
+                            # client.
                             self.loop.unregister(sock, Loop.READ)
                             self.loop.unregister(sock, Loop.WRITE)
                             self.loop.close_socket(sock)
@@ -115,8 +112,7 @@ class Application(object):
                                 pass
                 # Handle outputs
                 elif mode & Loop.WRITE:
-                    """This socket is available for writing.
-                    """
+                    # This socket is available for writing.
                     try:
                         next_msg = output_buffer[fd].get_nowait()
                     except Queue.Empty:
@@ -125,7 +121,8 @@ class Application(object):
                         sock.send(next_msg)
                 # Handle "exceptional conditions"
                 elif mode & Loop.ERROR:
-                    self.logger.error('Exception on', sock.fileno())
+                    self.logger.error('Exception on fd %d', sock.fileno())
+                    self.logger.error(sock._sock)
                     # Stop listening for input on the connection
                     self.loop.unregister(sock, Loop.READ)
                     self.loop.unregister(sock, Loop.WRITE)

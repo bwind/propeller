@@ -67,7 +67,10 @@ class EpollLoop(_Loop):
             self.__epoll.register(sock.fileno())
 
     def unregister(self, sock, event):
-        return self.__epoll.unregister(sock.fileno())
+        try:
+            self.__epoll.unregister(sock.fileno())
+        except IOError:
+            pass
 
     def poll(self):
         ret = {}
@@ -78,6 +81,9 @@ class EpollLoop(_Loop):
 
 
 class KqueueLoop(_Loop):
+    """KqueueLoop works on BSD style systems (FreeBSD, Mac OS). Faster
+    than select.
+    """
     def __init__(self):
         self.__kqueue = select.kqueue()
         self._sockets = {}
@@ -129,6 +135,5 @@ if hasattr(select, 'epoll'):
 elif hasattr(select, 'kqueue'):
     Loop = KqueueLoop
 else:
-    """Fall back to select().
-    """
+    # Fall back to select().
     Loop = SelectLoop

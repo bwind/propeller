@@ -27,7 +27,9 @@ class Request(object):
                 if not h:
                     break
                 k, v = h.split(': ')
-                if k == 'Cookie':
+                if k.lower() == 'x-real-ip' or k.lower() == 'x-forwarded-for':
+                    self.ip = v.split(',')[0].strip()
+                elif k.lower() == 'cookie':
                     try:
                         cname, cval = v.split('=')
                     except ValueError:

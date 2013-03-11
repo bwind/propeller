@@ -28,15 +28,25 @@ class Application(object):
         self.port = port
         self.urls = urls
 
+        # Set application-wide options
         Options.debug = debug
         Options.tpl_env = Environment(loader=PackageLoader('propeller', \
             'templates'), autoescape=True)
 
+        # Set the template dir
         self.tpl_dir = os.path.join(sys.path[0], tpl_dir)
-        self.logger = logging.getLogger(__name__)
-        logging.basicConfig(level=logging.INFO,
-                            format='[%(asctime)s] %(message)s')
 
+        # Set up logging
+        self.logger = logging.getLogger(__name__)
+        level = logging.INFO if debug is False else logging.DEBUG
+        self.logger.setLevel(level=level)
+        ch = logging.StreamHandler()
+        formatter = logging.Formatter('[%(asctime)s] %(message)s',
+                                      '%Y-%m-%d %H:%M:%S')
+        ch.setFormatter(formatter)
+        self.logger.addHandler(ch)
+
+        # Template environment for internal templates
         Template.env = Environment(loader=FileSystemLoader(self.tpl_dir),
                                    autoescape=True)
 
@@ -57,6 +67,7 @@ class Application(object):
         self.logger.info('* Propeller %s listening on %s:%d' % \
             (propeller.__version__, self.host, self.port))
 
+        # Create an event loop and register our server socket.
         self.loop = Loop()
         self.loop.register(server, Loop.READ)
 

@@ -11,19 +11,19 @@ class Request(object):
         self.method = '-'
         self.url = '-'
         self.protocol = '-'
-        self.body = '-'
+        self.body = ''
 
         if data:
             data = data.replace('\r', '')
             headers, self.body = data.split('\n\n')
-            data = [d.strip() for d in data.split('\n')]
-            self.method, url, self.protocol = data[0].split(' ')
+            headers = [d.strip() for d in headers.split('\n')]
+            self.method, url, self.protocol = headers[0].split(' ')
             self.url, separator, querystring = url.partition('?')
 
             # Parse headers and cookies
-            headers = []
+            hdrs = []
             self.cookies = []
-            for h in data[1:]:
+            for h in headers[1:]:
                 if not h:
                     break
                 k, v = h.split(': ')
@@ -37,21 +37,24 @@ class Request(object):
                     else:
                         self.cookies.append(Cookie(name=cname, value=cval))
                 else:
-                    headers.append((k, v))
-            self.headers = ImmutableMultiDict(headers)
+                    hdrs.append((k, v))
+            self.headers = ImmutableMultiDict(hdrs)
 
             # Parse GET variables
-            self.get = self.__parse_request_data(querystring)
+            self.get = self._parse_request_data(querystring)
 
             # Parse POST data
-            self.post = self.__parse_request_data(self.body)
+            self.post = self._parse_request_data(self.body)
+
+            # Parse files
+            self.files = self._parse_files()
         else:
             self.headers = ImmutableMultiDict()
             self.cookies = []
             self.get = ImmutableMultiDict()
             self.post = ImmutableMultiDict()
 
-    def __parse_request_data(self, data):
+    def _parse_request_data(self, data):
         values = []
         for pair in data.split('&'):
             try:
@@ -61,6 +64,9 @@ class Request(object):
             else:
                 values.append((k, v))
         return ImmutableMultiDict(values)
+
+    def _parse_files(self):
+        pass
 
     @property
     def execution_time(self):

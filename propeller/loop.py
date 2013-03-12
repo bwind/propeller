@@ -122,6 +122,8 @@ class KqueueLoop(_Loop):
                 events[sock] = self.READ
             elif e.filter == select.KQ_FILTER_WRITE:
                 if e.flags & select.KQ_EV_EOF:
+                    # Report EOF as ERROR back to application, which
+                    # results in closing the socket.
                     events[sock] = self.ERROR
                 else:
                     events[sock] = self.WRITE

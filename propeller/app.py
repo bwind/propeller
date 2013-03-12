@@ -72,6 +72,8 @@ class Application(object):
         self.loop.register(server, Loop.READ)
 
         output_buffer = {}
+        input_buffer = {}
+        bufsize = 4096
 
         while True:
 
@@ -89,58 +91,72 @@ class Application(object):
                         self.loop.register(conn, Loop.READ)
 
                         output_buffer[conn.fileno()] = Queue.Queue()
+                        input_buffer[conn.fileno()] = ''
                     else:
+                        # A readable client socket has data.
+                        response = ''
                         try:
-                            data = sock.recv(1024)
-                        except socket.error:
+                            data = sock.recv(bufsize)
+                            if data:
+                                input_buffer[fd] += data
+                            # TODO: implement SpooledTemporaryFile
+                        except socket.error, e:
                             continue
-                        if data:
-                            # A readable client socket has data.
-                            try:
-                                request = Request(data=data, ip=addr[0])
-                            except Exception:
-                                # Any type of exception is considered
-                                # as an invalid request and means we're
-                                # returning a 400 Bad Request.
-                                request = Request(ip=addr[0])
-                                response = BadRequestResponse()
-                            else:
-                                response = self.handle_request(request)
-
-                            output_buffer[fd].put(str(response))
-
-                            self.loop.register(sock, Loop.WRITE)
-                            self.log_request(request, response)
-                        else:
-                            # Interpret empty result as an EOF from the
-                            # client.
+                        if len(data) < bufsize:
+                            # We have received all data from the
+                            # client. Unregister interest for further
+                            # reading.
                             self.loop.unregister(sock, Loop.READ)
-                            self.loop.unregister(sock, Loop.WRITE)
-                            self.loop.close_socket(sock)
+
+                            # Only process this request if we have data
+                            # in the input buffer.
+                            if input_buffer[fd]:
+                                self.loop.register(sock, Loop.WRITE)
+                                try:
+                                    request = Request(data=input_buffer[fd],
+                                                      ip=addr[0])
+                                except Exception, e:
+                                    # Any type of exception is considered
+                                    # as an invalid request and means we're
+                                    # returning a 400 Bad Request.
+                                    self.logger.debug(e)
+                                    request = Request(ip=addr[0])
+                                    response = BadRequestResponse()
+                                else:
+                                    # Delegate the request to a
+                                    # RequestHandler.
+                                    response = self.handle_request(request)
+
+                                # Store the response in the output buffer so we
+                                # can send it when there is a socket available
+                                # for writing.
+                                output_buffer[fd].put(str(response))
+                                self.log_request(request, response)
                             try:
-                                del output_buffer[fd]
-                            except:
+                                del input_buffer[fd]
+                            except KeyError, e:
                                 pass
                 # Handle outputs
                 elif mode & Loop.WRITE:
                     # This socket is available for writing.
                     try:
-                        next_msg = output_buffer[fd].get_nowait()
+                        output = output_buffer[fd].get_nowait()
                     except Queue.Empty:
                         self.loop.unregister(sock, Loop.WRITE)
+                        self.loop.close_socket(sock)
+                        del output_buffer[fd]
                     else:
-                        sock.send(next_msg)
-                # Handle "exceptional conditions"
+                        sock.send(output)
+                # Handle errors and EOFs (kqueue)
                 elif mode & Loop.ERROR:
-                    self.logger.error('Exception on fd %d', sock.fileno())
-                    self.logger.error(sock._sock)
-                    # Stop listening for input on the connection
+                    # Stop listening for all events and close the
+                    # socket.
                     self.loop.unregister(sock, Loop.READ)
                     self.loop.unregister(sock, Loop.WRITE)
                     self.loop.close_socket(sock)
                     try:
                         del output_buffer[fd]
-                    except:
+                    except KeyError, e:
                         pass
 
     def handle_request(self, request):
@@ -154,9 +170,8 @@ class Application(object):
                 handler = url[1]()
                 break
         if not handler:
-            """Request URL did not match any of the urls. Invoke the
-            base RequestHandler and return a 404.
-            """
+            # Request URL did not match any of the urls. Return a
+            # NotFoundResponse.
             return NotFoundResponse(request.url)
         else:
             method = request.method.lower()
@@ -166,9 +181,8 @@ class Application(object):
             body = ''
             if request.method not in RequestHandler.supported_methods or \
                 not hasattr(handler, method):
-                """The HTTP method was not defined in the handler.
-                Return a 404.
-                """
+                # The HTTP method was not defined in the handler.
+                # Return a 404.
                 return NotFoundResponse(request.url)
             else:
                 try:
@@ -179,9 +193,8 @@ class Application(object):
                         'RequestHandler did not return instance of Response'
                     return response
                 except Exception, e:
-                    """Handle uncaught exception from the
-                    RequestHandler.
-                    """
+                    # Handle uncaught exception from the
+                    # RequestHandler.
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     tb = ''.join([t for t \
                         in traceback.format_tb(exc_tb, limit=11)[1:]])

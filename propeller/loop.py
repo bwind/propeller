@@ -58,23 +58,23 @@ class SelectLoop(_Loop):
 
 class EpollLoop(_Loop):
     def __init__(self):
-        self.__epoll = select.epoll()
+        self._epoll = select.epoll()
         self._sockets = {}
 
     def register(self, sock, event):
         if sock.fileno() not in self._sockets:
             self._sockets[sock.fileno()] = sock
-            self.__epoll.register(sock.fileno())
-
-    def unregister(self, sock, event):
         try:
-            self.__epoll.unregister(sock.fileno())
+            self._epoll.register(sock.fileno(), event)
         except IOError:
             pass
 
+    def unregister(self, sock, event):
+        self._epoll.unregister(sock.fileno())
+
     def poll(self):
         ret = {}
-        events = self.__epoll.poll()
+        events = self._epoll.poll()
         for e in events:
             ret[self._sockets[e[0]]] = e[1]
         return ret.items()
@@ -85,17 +85,17 @@ class KqueueLoop(_Loop):
     than select.
     """
     def __init__(self):
-        self.__kqueue = select.kqueue()
+        self._kqueue = select.kqueue()
         self._sockets = {}
 
     def register(self, sock, event):
         self._sockets[sock.fileno()] = sock
-        self.__control(sock.fileno(), event, select.KQ_EV_ADD)
+        self._control(sock.fileno(), event, select.KQ_EV_ADD)
 
     def unregister(self, sock, event=None):
-        self.__control(sock.fileno(), event, select.KQ_EV_DELETE)
+        self._control(sock.fileno(), event, select.KQ_EV_DELETE)
 
-    def __control(self, fd, event, flags):
+    def _control(self, fd, event, flags):
         kevents = []
         if event & self.WRITE:
             kevents.append(select.kevent(fd, filter=select.KQ_FILTER_WRITE,
@@ -108,12 +108,12 @@ class KqueueLoop(_Loop):
         # on Mac OS X (10.6) when there is more than one event in the list.
         for kevent in kevents:
             try:
-                self.__kqueue.control([kevent], 0)
+                self._kqueue.control([kevent], 0)
             except OSError:
                 pass
 
     def poll(self):
-        kevents = self.__kqueue.control(None, 1000)
+        kevents = self._kqueue.control(None, 1000)
         events = {}
         for e in kevents:
             fd = e.ident

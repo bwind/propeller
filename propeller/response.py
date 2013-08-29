@@ -10,8 +10,7 @@ import propeller
 
 
 class Response(object):
-    def __init__(self, body='', status_code=200,
-                 content_type='text/html; charset=utf-8'):
+    def __init__(self, body='', status_code=200, content_type='text/html'):
         self.body = body
         self.status_code = status_code
         self.headers = MultiDict()

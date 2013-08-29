@@ -3,14 +3,35 @@ import socket
 
 
 class _Loop(object):
+    stack = set()
+
     READ = 0x001
     WRITE = 0x004
     ERROR = 0x008 | 0x010
 
     def close_socket(self, sock):
+        _Loop.stack.discard(sock)
         fd = sock.fileno()
+        print('* Disconnected from %s' % str(sock.getpeername()))
+        self.print_stack()
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except socket.error:
+            pass
         sock.close()
         del self._sockets[fd]
+
+    def print_stack(self):
+        print('-' * 40)
+        if _Loop.stack:
+            print('SOCKET STACK')
+            print('-' * 40)
+            for s in _Loop.stack:
+                print(str(s.getpeername()))
+        else:
+            print('SOCKET STACK EMPTY')
+        print('-' * 40)
+
 
 
 class SelectLoop(_Loop):
@@ -23,7 +44,7 @@ class SelectLoop(_Loop):
         self.unregister(sock, self.READ)
         self.unregister(sock, self.WRITE)
         self.unregister(sock, self.ERROR)
-        sock.close()
+        super(SelectLoop, self).close_socket(sock)
 
     def register(self, sock, event):
         if event & self.READ:

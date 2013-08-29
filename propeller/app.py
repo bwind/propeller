@@ -1,11 +1,12 @@
 from jinja2 import Environment, FileSystemLoader, PackageLoader
-from propeller.loop import Loop
+from propeller.loop import Loop, _Loop
 from propeller.options import Options
 from propeller.reloader import Reloader
 from propeller.response import *
 from propeller.request import Request
 from propeller.request_handler import RequestHandler
 from propeller.template import Template
+from tempfile import SpooledTemporaryFile
 
 import httplib
 import logging
@@ -41,7 +42,7 @@ class Application(object):
         level = logging.INFO if debug is False else logging.DEBUG
         self.logger.setLevel(level=level)
         ch = logging.StreamHandler()
-        formatter = logging.Formatter('[%(asctime)s] %(message)s',
+        formatter = logging.Formatter('[%(asctime)s] %(levelname)s %(message)s',
                                       '%Y-%m-%d %H:%M:%S')
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
@@ -74,6 +75,7 @@ class Application(object):
         output_buffer = {}
         input_buffer = {}
         bufsize = 4096
+        bufmaxsize = 1024 * 1024 * 2 # 2MB
 
         while True:
 
@@ -87,20 +89,22 @@ class Application(object):
                         # A readable socket server is available to
                         # accept a connection.
                         conn, addr = server.accept()
+                        _Loop.stack.add(conn)
+                        print('* Connected to %s' % str(addr))
+                        self.loop.print_stack()
                         conn.setblocking(0)
                         self.loop.register(conn, Loop.READ)
 
                         output_buffer[conn.fileno()] = Queue.Queue()
-                        input_buffer[conn.fileno()] = ''
+                        input_buffer[conn.fileno()] = SpooledTemporaryFile(max_size=bufmaxsize)
                     else:
                         # A readable client socket has data.
                         response = ''
                         try:
                             data = sock.recv(bufsize)
                             if data:
-                                input_buffer[fd] += data
-                            # TODO: implement SpooledTemporaryFile
-                        except socket.error, e:
+                                input_buffer[fd].write(data)
+                        except socket.error as e:
                             continue
                         if len(data) < bufsize:
                             # We have received all data from the
@@ -110,16 +114,16 @@ class Application(object):
 
                             # Only process this request if we have data
                             # in the input buffer.
-                            if input_buffer[fd]:
+                            if input_buffer[fd].tell() > 0:
                                 self.loop.register(sock, Loop.WRITE)
                                 try:
                                     request = Request(data=input_buffer[fd],
                                                       ip=addr[0])
-                                except Exception, e:
+                                except Exception as e:
                                     # Any type of exception is considered
                                     # as an invalid request and means we're
                                     # returning a 400 Bad Request.
-                                    self.logger.debug(e)
+                                    self.logger.error(e)
                                     request = Request(ip=addr[0])
                                     response = BadRequestResponse()
                                 else:
@@ -134,7 +138,7 @@ class Application(object):
                                 self.log_request(request, response)
                             try:
                                 del input_buffer[fd]
-                            except KeyError, e:
+                            except KeyError:
                                 pass
                 # Handle outputs
                 elif mode & Loop.WRITE:
@@ -156,7 +160,7 @@ class Application(object):
                     self.loop.close_socket(sock)
                     try:
                         del output_buffer[fd]
-                    except KeyError, e:
+                    except KeyError:
                         pass
 
     def handle_request(self, request):
@@ -192,7 +196,7 @@ class Application(object):
                     assert isinstance(response, Response), \
                         'RequestHandler did not return instance of Response'
                     return response
-                except Exception, e:
+                except Exception as e:
                     # Handle uncaught exception from the
                     # RequestHandler.
                     exc_type, exc_obj, exc_tb = sys.exc_info()

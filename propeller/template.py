@@ -12,4 +12,4 @@ class Template(object):
         if not self.__compiled:
             t = self.env.get_template(self.__template)
             self.__compiled = t.render(**self.__tpl_vars)
-        return self.__compiled
+        return self.__compiled.encode('utf-8')

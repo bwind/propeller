@@ -1,5 +1,5 @@
 from jinja2 import Environment, FileSystemLoader, PackageLoader
-from propeller.loop import Loop, _Loop
+from propeller.loop import Loop
 from propeller.options import Options
 from propeller.reloader import Reloader
 from propeller.response import *
@@ -89,9 +89,6 @@ class Application(object):
                         # A readable socket server is available to
                         # accept a connection.
                         conn, addr = server.accept()
-                        _Loop.stack.add(conn)
-                        print('* Connected to %s' % str(addr))
-                        self.loop.print_stack()
                         conn.setblocking(0)
                         self.loop.register(conn, Loop.READ)
 

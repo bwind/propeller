@@ -14,6 +14,7 @@ class Request(object):
         self.start_time = time.time()
         self.ip = ip
         self.method = '-'
+        self.path = '-'
         self.url = '-'
         self.protocol = '-'
         self.body = ''
@@ -35,14 +36,14 @@ class Request(object):
                     break
                 headers.append(header)
 
-            self.method, url, self.protocol = headers[0].split(' ')
-            self.url, separator, querystring = url.partition('?')
+            self.method, self.path, self.protocol = headers[0].split(' ')
+            self.url, separator, querystring = self.path.partition('?')
 
             # Parse headers and cookies
             self._parse_headers(headers)
 
             # Parse files
-            #self._parse_files()
+            self._parse_files()
 
             # Parse GET variables
             self.get = self._parse_request_data(querystring, unquote=True)
@@ -93,49 +94,53 @@ class Request(object):
             boundary = re.match(r'.*boundary=(.*)$',
                                 self.headers['Content-Type'][0]).group(1)
         except Exception as e:
-            if self.url == '/':
-                print self.method
-                print self.headers
-                raise e
             return
         boundary = '--' + boundary
         boundary_end = boundary + '--'
         self.files = []
         self.data.seek(0)
         uploaded_file = None
+        chunk_size = 4096
+
         while True:
             line = self.data.readline().strip()
             if not line:
                 # We've encountered a newline, and thus the end of the
                 # HTTP headers.
-                print '* END OF HEADERS'
                 break
+
         while True:
-            line = self.data.readline()
-            if line.rstrip().startswith(boundary) and uploaded_file:
-                print '* CLOSING FILE AT', self.data.tell()
-                print len(line), line
-                # End of a file.
+            chunk = self.data.read(chunk_size)
 
-                # Truncate the newline from this file, reset file
-                # pointer of previous uploaded file and add to
-                # self.files list.
-                uploaded_file.file.seek(-2, os.SEEK_END)
-                uploaded_file.file.truncate()
-                uploaded_file.file.seek(0)
-                self.files.append(uploaded_file)
-                uploaded_file = None
+            if not chunk:
+                break
 
-            elif line.rstrip() == boundary:
-                # Start of a new file. Parse headers of this multipart
-                # and create new file.
+            elif boundary in chunk:
+                # We've encountered a new file.
+
+                # Move back to the start of our chunk
+                self.data.seek(-min(len(chunk), chunk_size), 1)
+                prev_data = self.data.read(chunk.index(boundary))[:-2]
+
+                if uploaded_file and prev_data:
+                    # Close the previous file
+                    uploaded_file.file.write(prev_data)
+                    uploaded_file.file.seek(0)
+                    self.files.append(uploaded_file)
+                    uploaded_file = None
+
                 name = None
                 filename = None
                 mime_type = None
                 while True:
                     header = self.data.readline().strip()
-                    print '* MULTIPART HEADER:', header
                     if not header:
+                        # End of headers for this multipart.
+
+                        # Before the first boundary is an area that is
+                        # ignored by MIME-compliant clients. This area is
+                        # generally used to put a message to users of old
+                        # non-MIME clients.
                         break
                     m = re.match(r'Content\-Disposition: form\-data; name="(.+)"; filename="(.+)"$', header)
                     if m:
@@ -146,24 +151,23 @@ class Request(object):
 
                 if name and filename and mime_type:
                     # Create new uploaded file
-                    print '* CREATING NEW FILE'
                     uploaded_file = UploadedFile(name=name, filename=filename,
                                                  mime_type=mime_type)
                 else:
-                    print '* SOMETHING WENT WRONG:', name, filename, mime_type
-            elif line.rstrip() == boundary_end:
-                # EOF of POST body. We are done parsing files.
-                print '* EOF POST'
-                break
-            else:
-                if uploaded_file:
-                    uploaded_file.file.write(line)
-                else:
-                    # Before the first boundary is an area that is
-                    # ignored by MIME-compliant clients. This area is
-                    # generally used to put a message to users of old
-                    # non-MIME clients.
                     pass
+                    # invalid file or boundary_end
+
+            elif uploaded_file:
+                # Write chunk to uploaded_file, minus len(boundary)
+                if len(chunk) == chunk_size:
+                    end = -len(boundary)
+                else:
+                    end = len(chunk)
+                if not chunk[:end]:
+                    break
+                uploaded_file.file.write(chunk[:end])
+                # Seek back
+                self.data.seek(end, 1)
 
     @property
     def execution_time(self):

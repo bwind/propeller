@@ -102,11 +102,13 @@ class Application(object):
                             if data:
                                 input_buffer[fd].write(data)
                         except socket.error as e:
-                            continue
+                            # EAGAIN or EWOULDBLOCK?
+                            data = ''
                         if len(data) < bufsize:
                             # We have received all data from the
                             # client. Unregister interest for further
                             # reading.
+
                             self.loop.unregister(sock, Loop.READ)
 
                             # Only process this request if we have data
@@ -147,7 +149,13 @@ class Application(object):
                         self.loop.close_socket(sock)
                         del output_buffer[fd]
                     else:
-                        sock.send(output)
+                        total_sent = 0
+                        while total_sent < len(output):
+                            try:
+                                sent = sock.send(output[total_sent:])
+                            except socket.error as e:
+                                sent = 0
+                            total_sent = total_sent + sent
                 # Handle errors and EOFs (kqueue)
                 elif mode & Loop.ERROR:
                     # Stop listening for all events and close the
@@ -217,7 +225,7 @@ class Application(object):
         log = ' '.join([
             str(response.status_code),
             method,
-            request.url,
+            request.path,
             str(len(response.body)),
             ms,
             '(%s)' % request.ip

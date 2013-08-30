@@ -10,7 +10,8 @@ class _Loop(object):
     def close_socket(self, sock):
         fd = sock.fileno()
         sock.close()
-        del self._sockets[fd]
+        if hasattr(self, '_sockets'):
+            del self._sockets[fd]
 
 
 class SelectLoop(_Loop):

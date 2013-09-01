@@ -96,24 +96,42 @@ class Application(object):
                         input_buffer[conn.fileno()] = SpooledTemporaryFile(max_size=bufmaxsize)
                     else:
                         # A readable client socket has data.
-                        response = ''
                         try:
                             data = sock.recv(bufsize)
                             if data:
                                 input_buffer[fd].write(data)
                         except socket.error as e:
-                            # EAGAIN or EWOULDBLOCK?
+                            self.logger.debug(e)
+                            if e.args[0] == 35:
+                                # EAGAIN or EWOULDBLOCK, try again later
+                                continue
                             data = ''
                         if len(data) < bufsize:
+                            # Typically, this means we have received all data.
+                            # It seems however that this could also mean that
+                            # the read buffer has depleted, so we're employing
+                            # this hack to try and see if there's more data
+                            # available in the read buffer.
+                            if len(data):
+                                time.sleep(1. / 1000)
+                                try:
+                                    d = sock.recv(bufsize)
+                                    if d:
+                                        input_buffer[fd].write(d)
+                                        continue
+                                except socket.error as e:
+                                    self.logger.debug(e)
+                                    pass
+
                             # We have received all data from the
                             # client. Unregister interest for further
                             # reading.
-
                             self.loop.unregister(sock, Loop.READ)
 
                             # Only process this request if we have data
                             # in the input buffer.
                             if input_buffer[fd].tell() > 0:
+                                response = ''
                                 self.loop.register(sock, Loop.WRITE)
                                 try:
                                     request = Request(data=input_buffer[fd],

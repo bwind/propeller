@@ -21,6 +21,9 @@ import traceback
 import Queue
 
 
+bufsize = 4096
+
+
 class Application(object):
     def __init__(self, urls=(), host='127.0.0.1', port=8080, debug=False,
                  tpl_dir='templates'):
@@ -54,117 +57,113 @@ class Application(object):
     def run(self):
         if Options.debug:
             # Run Propeller with reloader
-            Reloader.run_with_reloader(self, self.__run)
+            Reloader.run_with_reloader(self, self._run)
         else:
-            self.__run()
+            self._run()
 
-    def __run(self):
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.setblocking(0)
-        server.bind((self.host, self.port))
-        server.listen(1000)
+    def _run(self):
+        self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._server.setblocking(0)
+        self._server.bind((self.host, self.port))
+        self._server.listen(1000)
 
         self.logger.info('* Propeller %s listening on %s:%d' % \
             (propeller.__version__, self.host, self.port))
 
         # Create an event loop and register our server socket.
         self.loop = Loop()
-        self.loop.register(server, Loop.READ)
+        self.loop.register(self._server, Loop.READ)
 
-        requests = {}
-        bufsize = 4096
-        bufmaxsize = 1024 * 1024 * 2 # 2MB
+        self._requests = {}
+
+        handlers = {
+            Loop.READ: self._read_handler,
+            Loop.WRITE: self._write_handler,
+            Loop.ERROR: self._error_handler,
+        }
 
         while True:
-
             events = self.loop.poll()
-
             for sock, mode in events:
-                fd = sock.fileno()
+                handlers[mode](sock)
 
-                if mode & Loop.READ:
-                    if sock == server:
-                        # A readable socket server is available to
-                        # accept a connection.
-                        conn, addr = server.accept()
-                        conn.setblocking(0)
-                        self.loop.register(conn, Loop.READ)
-                        requests[conn.fileno()] = Request(sock=conn, ip=addr[0])
-                    else:
-                        # A readable client socket has data.
-                        try:
-                            data = sock.recv(bufsize)
-                            if data:
-                                requests[fd]._write(data)
-                        except socket.error as e:
-                            self.logger.debug(e)
-                            if e.args[0] == 35:
-                                # EAGAIN or EWOULDBLOCK, try again later
-                                continue
-                            data = ''
-                        if not requests[fd]._has_more_data():
-                            # We have received all data from the
-                            # client. Unregister interest for further
-                            # reading.
-                            self.loop.unregister(sock, Loop.READ)
+    def _read_handler(self, sock):
+        if sock == self._server:
+            # A readable socket server is available to
+            # accept a connection.
+            conn, addr = sock.accept()
+            conn.setblocking(0)
+            self.loop.register(conn, Loop.READ)
+            self._requests[conn.fileno()] = Request(sock=conn, ip=addr[0])
+        else:
+            # A readable client socket has data.
+            request = self._requests[sock.fileno()]
+            try:
+                data = sock.recv(bufsize)
+                if data:
+                    request._write(data)
+            except socket.error as e:
+                self.logger.debug(e)
+                if e.args[0] == 35:
+                    # EAGAIN or EWOULDBLOCK, try again later
+                    return
+                data = ''
+            if not request._has_more_data():
+                # We have received all data from the
+                # client. Unregister interest for further
+                # reading.
+                self.loop.unregister(sock, Loop.READ)
 
-                            # Only process this request if we have data
-                            # in the input buffer.
-                            if requests[fd]._input_buffer.tell() > 0:
-                                response = ''
-                                self.loop.register(sock, Loop.WRITE)
+                # Only process this request if we have data
+                # in the input buffer.
+                if request._input_buffer.tell() > 0:
+                    response = ''
+                    self.loop.register(sock, Loop.WRITE)
 
-                                """
-                                try:
-                                    requests[fd]._parse()
-                                except Exception as e:
-                                    # Any type of exception is considered
-                                    # as an invalid request and means we're
-                                    # returning a 400 Bad Request.
-                                    self.logger.error(e)
-                                    request = Request(ip=addr[0])
-                                    response = BadRequestResponse()
-                                else:
-                                    # Delegate the request to a
-                                    # RequestHandler.
-                                    response = self.handle_request(requests[fd])
-
-                                    # Store the response in the output buffer so we
-                                    # can send it when there is a socket available
-                                    # for writing.
-                                    requests[fd]._output_buffer.put(str(response))
-                                    self.log_request(requests[fd], response)
-                                """
-
-                                requests[fd]._parse()
-                                response = self._handle_request(requests[fd])
-                                requests[fd]._output_buffer.put(str(response))
-                                self._log_request(requests[fd], response)
-
-                # Handle outputs
-                elif mode & Loop.WRITE:
-                    # This socket is available for writing.
                     try:
-                        output = requests[fd]._output_buffer.get_nowait()
-                    except Queue.Empty:
-                        self.loop.unregister(sock, Loop.WRITE)
-                        self.loop.close_socket(sock)
+                        request._parse()
+                    except Exception as e:
+                        # Any type of exception is considered
+                        # as an invalid request and means we're
+                        # returning a 400 Bad Request.
+                        self.logger.error(e)
+                        request = Request(ip=addr[0])
+                        response = BadRequestResponse()
                     else:
-                        total_sent = 0
-                        while total_sent < len(output):
-                            try:
-                                sent = sock.send(output[total_sent:])
-                            except socket.error as e:
-                                sent = 0
-                            total_sent = total_sent + sent
-                # Handle errors and EOFs (kqueue)
-                elif mode & Loop.ERROR:
-                    # Stop listening for all events and close the
-                    # socket.
-                    self.loop.unregister(sock, Loop.READ)
-                    self.loop.unregister(sock, Loop.WRITE)
-                    self.loop.close_socket(sock)
+                        # Delegate the request to a
+                        # RequestHandler.
+                        response = self._handle_request(request)
+
+                        # Store the response in the output buffer so we
+                        # can send it when there is a socket available
+                        # for writing.
+                        request._output_buffer.put(str(response))
+                        self._log_request(request, response)
+
+    def _write_handler(self, sock):
+        # This socket is available for writing.
+        try:
+            output = self._requests[sock.fileno()]._output_buffer.get_nowait()
+        except Queue.Empty:
+            # We're done sending. Clean up.
+            self.loop.unregister(sock, Loop.WRITE)
+            self.loop.close_socket(sock)
+        else:
+            total_sent = 0
+            while total_sent < len(output):
+                try:
+                    sent = sock.send(output[total_sent:])
+                except socket.error as e:
+                    sent = 0
+                total_sent = total_sent + sent
+
+    def _error_handler(self, sock):
+        # Stop listening for all events and close the
+        # socket.
+        self.loop.unregister(sock, Loop.READ)
+        self.loop.unregister(sock, Loop.WRITE)
+        self.loop.close_socket(sock)
 
     def _handle_request(self, request):
         """Iterates over self.urls to match the requested URL and stops

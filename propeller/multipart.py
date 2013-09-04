@@ -34,11 +34,10 @@ class MultiPartParser(object):
 
         boundary = '--' + boundary
         uploaded_file = None
+        post_value = None
         chunk_size = 4096
 
-        name = None
-        filename = None
-        mime_type = None
+        name, filename, mime_type = None, None, None
 
         while True:
             line = ib.readline().strip()
@@ -64,12 +63,15 @@ class MultiPartParser(object):
                     if uploaded_file:
                         uploaded_file.file.write(prev_data)
                     elif name:
-                        post.add(name, prev_data)
+                        post_value += prev_data
 
                 if uploaded_file:
                     uploaded_file.file.seek(0)
                     files.append(uploaded_file)
                     uploaded_file = None
+                elif post_value:
+                    post.add(name, post_value)
+                    post_value = ''
 
                 name, filename, mime_type = None, None, None
 
@@ -89,8 +91,10 @@ class MultiPartParser(object):
                     # Create new uploaded file
                     uploaded_file = UploadedFile(name=name, filename=filename,
                                                  mime_type=mime_type)
+                elif name:
+                    post_value = ''
 
-            elif uploaded_file:
+            elif uploaded_file or name:
                 # Write chunk to uploaded_file, minus len(boundary)
                 if len(chunk) == chunk_size:
                     end = -len(boundary)
@@ -98,7 +102,10 @@ class MultiPartParser(object):
                     end = len(chunk)
                 if not chunk[:end]:
                     break
-                uploaded_file.file.write(chunk[:end])
+                if uploaded_file:
+                    uploaded_file.file.write(chunk[:end])
+                else:
+                    post_value += chunk[:end]
                 # Seek back
                 ib.seek(end, 1)
 

@@ -31,7 +31,6 @@ class Request(object):
         self.files = []
         self.get = ImmutableMultiDict()
         self.post = ImmutableMultiDict()
-        self._post = MultiDict()
 
     def _parse(self):
         if self._input_buffer:
@@ -48,7 +47,7 @@ class Request(object):
             self.url, separator, querystring = self.path.partition('?')
 
             # Parse headers and cookies
-            self._parse_headers(headers)
+            self.headers, self.cookies = self._parse_headers_and_cookies()
 
             # Parse POST and FILES
             parser = MultiPartParser(self)
@@ -81,15 +80,22 @@ class Request(object):
             if match:
                 self._content_length = int(match.group(1))
 
-    def _parse_headers(self, headers):
-        hdrs = []
-        self.cookies = []
-        for header in headers[1:]:
+    def _parse_headers_and_cookies(self):
+        self._input_buffer.seek(0)
+        headers = []
+        cookies = []
+        # Skip first line
+        self._input_buffer.readline()
+        while True:
+            header = self._input_buffer.readline().strip()
             if not header:
-                # End of headers
+                # Newline, which means end of HTTP headers.
                 break
             field = header.split(': ')[0]
-            value = header[header.index(': ') + 2:]
+            try:
+                value = header[header.index(': ') + 2:]
+            except:
+                continue
             fl = field.lower()
             if fl == 'x-real-ip' or fl == 'x-forwarded-for':
                 self.ip = value.split(',')[0].strip()
@@ -99,10 +105,10 @@ class Request(object):
                 except ValueError:
                     pass
                 else:
-                    self.cookies.append(Cookie(name=cname, value=cvalue))
+                    cookies.append(Cookie(name=cname, value=cvalue))
             else:
-                hdrs.append((field, value))
-        self.headers = ImmutableMultiDict(hdrs)
+                headers.append((field, value))
+        return (ImmutableMultiDict(headers), cookies)
 
     def _parse_request_data(self, data, unquote=False):
         values = []

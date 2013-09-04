@@ -6,14 +6,11 @@ from propeller.response import *
 from propeller.request import Request
 from propeller.request_handler import RequestHandler
 from propeller.template import Template
-from tempfile import SpooledTemporaryFile
 
-import httplib
 import logging
 import os
 import propeller
 import re
-import select
 import socket
 import sys
 import time
@@ -72,8 +69,8 @@ class Application(object):
             (propeller.__version__, self.host, self.port))
 
         # Create an event loop and register our server socket.
-        self.loop = Loop()
-        self.loop.register(self._server, Loop.READ)
+        self._loop = Loop()
+        self._loop.register(self._server, Loop.READ)
 
         self._requests = {}
 
@@ -84,7 +81,7 @@ class Application(object):
         }
 
         while True:
-            events = self.loop.poll()
+            events = self._loop.poll()
             for sock, mode in events:
                 handlers[mode](sock)
 
@@ -94,7 +91,7 @@ class Application(object):
             # accept a connection.
             conn, addr = sock.accept()
             conn.setblocking(0)
-            self.loop.register(conn, Loop.READ)
+            self._loop.register(conn, Loop.READ)
             self._requests[conn.fileno()] = Request(sock=conn, ip=addr[0])
         else:
             # A readable client socket has data.
@@ -113,13 +110,13 @@ class Application(object):
                 # We have received all data from the
                 # client. Unregister interest for further
                 # reading.
-                self.loop.unregister(sock, Loop.READ)
+                self._loop.unregister(sock, Loop.READ)
 
                 # Only process this request if we have data
                 # in the input buffer.
                 if request._input_buffer.tell() > 0:
                     response = ''
-                    self.loop.register(sock, Loop.WRITE)
+                    self._loop.register(sock, Loop.WRITE)
 
                     try:
                         request._parse()
@@ -128,7 +125,7 @@ class Application(object):
                         # as an invalid request and means we're
                         # returning a 400 Bad Request.
                         self.logger.error(e)
-                        request = Request(ip=addr[0])
+                        request = Request(ip=sock.getpeername()[0])
                         response = BadRequestResponse()
                     else:
                         # Delegate the request to a
@@ -147,8 +144,8 @@ class Application(object):
             output = self._requests[sock.fileno()]._output_buffer.get_nowait()
         except Queue.Empty:
             # We're done sending. Clean up.
-            self.loop.unregister(sock, Loop.WRITE)
-            self.loop.close_socket(sock)
+            self._loop.unregister(sock, Loop.WRITE)
+            self._loop.close_socket(sock)
         else:
             total_sent = 0
             while total_sent < len(output):
@@ -161,9 +158,9 @@ class Application(object):
     def _error_handler(self, sock):
         # Stop listening for all events and close the
         # socket.
-        self.loop.unregister(sock, Loop.READ)
-        self.loop.unregister(sock, Loop.WRITE)
-        self.loop.close_socket(sock)
+        self._loop.unregister(sock, Loop.READ)
+        self._loop.unregister(sock, Loop.WRITE)
+        self._loop.close_socket(sock)
 
     def _handle_request(self, request):
         """Iterates over self.urls to match the requested URL and stops

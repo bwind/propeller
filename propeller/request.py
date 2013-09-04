@@ -35,15 +35,7 @@ class Request(object):
     def _parse(self):
         if self._input_buffer:
             self._input_buffer.seek(0)
-            headers = []
-            while True:
-                header = self._input_buffer.readline().strip()
-                if not header:
-                    # Newline, which means end of HTTP headers.
-                    break
-                headers.append(header)
-
-            self.method, self.path, self.protocol = headers[0].split(' ')
+            self.method, self.path, self.protocol = self._input_buffer.readline().split(' ')
             self.url, separator, querystring = self.path.partition('?')
 
             # Parse headers and cookies
@@ -54,7 +46,7 @@ class Request(object):
             self.post, self.files = parser._parse_post_and_files()
 
             # Parse GET
-            self.get = self._parse_request_data(querystring, unquote=True)
+            self.get = self._parse_request_data(querystring)
 
     def _has_more_data(self):
         return self._message_bytes < self._content_length
@@ -78,6 +70,7 @@ class Request(object):
             self._header_data += data
             match = re.search('content\-length: ([0-9]+)', self._header_data.lower())
             if match:
+                # TODO: does not apply for HEAD requests
                 self._content_length = int(match.group(1))
 
     def _parse_headers_and_cookies(self):
@@ -110,7 +103,7 @@ class Request(object):
                 headers.append((field, value))
         return (ImmutableMultiDict(headers), cookies)
 
-    def _parse_request_data(self, data, unquote=False):
+    def _parse_request_data(self, data):
         values = []
         for pair in data.split('&'):
             try:
@@ -118,8 +111,7 @@ class Request(object):
             except ValueError:
                 pass
             else:
-                if unquote:
-                    v = urllib.unquote(v)
+                v = urllib.unquote(v)
                 values.append((k, v))
         return ImmutableMultiDict(values)
 

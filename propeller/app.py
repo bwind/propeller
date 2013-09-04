@@ -83,7 +83,8 @@ class Application(object):
         while True:
             events = self._loop.poll()
             for sock, mode in events:
-                handlers[mode](sock)
+                if mode in handlers:
+                    handlers[mode](sock)
 
     def _read_handler(self, sock):
         if sock == self._server:

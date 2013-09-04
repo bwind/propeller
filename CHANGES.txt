@@ -1,4 +1,4 @@
-v0.1.6, 2013-08-29 -- Fixed socket leak, added experimental MIME parsing.
+v0.1.6, 2013-09-04 -- Added MIME parsing, stability and bug fixes.
 v0.1.5, 2013-03-10 -- setuptools fix.
 v0.1.4, 2013-03-10 -- Further improvements to epoll implementation.
 v0.1.3, 2013-02-22 -- Fixed epoll.

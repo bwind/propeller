@@ -16,6 +16,6 @@ setup(
     long_description=open('README.txt').read(),
     keywords='web server http framework fast',
     install_requires=[
-        'Jinja2==2.6',
+        'Jinja2==2.7.1',
     ],
 )

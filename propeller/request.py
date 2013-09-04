@@ -1,36 +1,44 @@
 from propeller.cookie import Cookie
-from propeller.uploaded_file import UploadedFile
-from propeller.util.dict import ImmutableMultiDict, ImmutableDict
+from propeller.multipart import MultiPartParser
+from propeller.util.dict import MultiDict, ImmutableMultiDict, ImmutableDict
 from tempfile import SpooledTemporaryFile
 
 import os
 import re
 import time
 import urllib
+import Queue
 
 
 class Request(object):
-    def __init__(self, data=None, ip=''):
-        self.start_time = time.time()
+    def __init__(self, ip='', sock=None):
         self.ip = ip
         self.method = '-'
         self.path = '-'
         self.url = '-'
         self.protocol = '-'
         self.body = ''
-        self.data = data
+
+        self._sock = sock
+        self._input_buffer = SpooledTemporaryFile(max_size=1024 * 1024 * 2)
+        self._output_buffer = Queue.Queue()
+        self._bytes = 0
+        self._content_length = 0
+        self._header_data = ''
 
         self.headers = ImmutableMultiDict()
         self.cookies = []
         self.files = []
         self.get = ImmutableMultiDict()
         self.post = ImmutableMultiDict()
+        self._post = MultiDict()
 
-        if self.data:
-            self.data.seek(0)
+    def _parse(self):
+        if self._input_buffer:
+            self._input_buffer.seek(0)
             headers = []
             while True:
-                header = self.data.readline().strip()
+                header = self._input_buffer.readline().strip()
                 if not header:
                     # Newline, which means end of HTTP headers.
                     break
@@ -42,14 +50,36 @@ class Request(object):
             # Parse headers and cookies
             self._parse_headers(headers)
 
-            # Parse files
-            self._parse_files()
+            # Parse POST and FILES
+            parser = MultiPartParser(self)
+            self.post, self.files = parser._parse_post_and_files()
 
-            # Parse GET variables
+            # Parse GET
             self.get = self._parse_request_data(querystring, unquote=True)
 
-            # Parse POST data
-            #self.post = self._parse_request_data(self.data)
+    def _has_more_data(self):
+        return self._message_bytes < self._content_length
+
+    @property
+    def _message_bytes(self):
+        return self._bytes - self._get_message_start()
+
+    def _get_message_start(self):
+        try:
+            return self._header_data.index('\r\n\r\n') + 4
+        except:
+            return 0
+
+    def _write(self, data):
+        self._bytes += len(data)
+        self._input_buffer.write(data)
+
+        # Only accummulate up to 16kb of possible header data
+        if len(self._header_data) < 2 ** 14:
+            self._header_data += data
+            match = re.search('content\-length: ([0-9]+)', self._header_data.lower())
+            if match:
+                self._content_length = int(match.group(1))
 
     def _parse_headers(self, headers):
         hdrs = []
@@ -87,88 +117,9 @@ class Request(object):
                 values.append((k, v))
         return ImmutableMultiDict(values)
 
-    def _parse_files(self):
-        # Only parse files if we have a 'Content-Type' header with a
-        # 'boundary' directive
-        try:
-            boundary = re.match(r'.*boundary=(.*)$',
-                                self.headers['Content-Type'][0]).group(1)
-        except Exception as e:
-            return
-        boundary = '--' + boundary
-        boundary_end = boundary + '--'
-        self.files = []
-        self.data.seek(0)
-        uploaded_file = None
-        chunk_size = 4096
-
-        while True:
-            line = self.data.readline().strip()
-            if not line:
-                # We've encountered a newline, and thus the end of the
-                # HTTP headers.
-                break
-
-        while True:
-            chunk = self.data.read(chunk_size)
-
-            if not chunk:
-                break
-
-            elif boundary in chunk:
-                # We've encountered a new file.
-
-                # Move back to the start of our chunk
-                self.data.seek(-min(len(chunk), chunk_size), 1)
-                prev_data = self.data.read(chunk.index(boundary))[:-2]
-
-                if uploaded_file and prev_data:
-                    # Close the previous file
-                    uploaded_file.file.write(prev_data)
-                    uploaded_file.file.seek(0)
-                    self.files.append(uploaded_file)
-                    uploaded_file = None
-
-                name = None
-                filename = None
-                mime_type = None
-                while True:
-                    header = self.data.readline().strip()
-                    if not header:
-                        # End of headers for this multipart.
-
-                        # Before the first boundary is an area that is
-                        # ignored by MIME-compliant clients. This area is
-                        # generally used to put a message to users of old
-                        # non-MIME clients.
-                        break
-                    m = re.match(r'Content\-Disposition: form\-data; name="(.+)"; filename="(.+)"$', header)
-                    if m:
-                        name, filename = m.groups()
-                    m = re.match(r'Content-Type: (.+)$', header)
-                    if m:
-                        mime_type = m.group(1)
-
-                if name and filename and mime_type:
-                    # Create new uploaded file
-                    uploaded_file = UploadedFile(name=name, filename=filename,
-                                                 mime_type=mime_type)
-                else:
-                    pass
-                    # invalid file or boundary_end
-
-            elif uploaded_file:
-                # Write chunk to uploaded_file, minus len(boundary)
-                if len(chunk) == chunk_size:
-                    end = -len(boundary)
-                else:
-                    end = len(chunk)
-                if not chunk[:end]:
-                    break
-                uploaded_file.file.write(chunk[:end])
-                # Seek back
-                self.data.seek(end, 1)
-
     @property
     def execution_time(self):
-        return time.time() - self.start_time
+        try:
+            return time.time() - self._start_time
+        except:
+            return 0

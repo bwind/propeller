@@ -72,8 +72,7 @@ class Application(object):
         self.loop = Loop()
         self.loop.register(server, Loop.READ)
 
-        output_buffer = {}
-        input_buffer = {}
+        requests = {}
         bufsize = 4096
         bufmaxsize = 1024 * 1024 * 2 # 2MB
 
@@ -91,38 +90,20 @@ class Application(object):
                         conn, addr = server.accept()
                         conn.setblocking(0)
                         self.loop.register(conn, Loop.READ)
-
-                        output_buffer[conn.fileno()] = Queue.Queue()
-                        input_buffer[conn.fileno()] = SpooledTemporaryFile(max_size=bufmaxsize)
+                        requests[conn.fileno()] = Request(sock=conn, ip=addr[0])
                     else:
                         # A readable client socket has data.
                         try:
                             data = sock.recv(bufsize)
                             if data:
-                                input_buffer[fd].write(data)
+                                requests[fd]._write(data)
                         except socket.error as e:
                             self.logger.debug(e)
                             if e.args[0] == 35:
                                 # EAGAIN or EWOULDBLOCK, try again later
                                 continue
                             data = ''
-                        if len(data) < bufsize:
-                            # Typically, this means we have received all data.
-                            # It seems however that this could also mean that
-                            # the read buffer has depleted, so we're employing
-                            # this hack to try and see if there's more data
-                            # available in the read buffer.
-                            if len(data):
-                                time.sleep(1. / 1000)
-                                try:
-                                    d = sock.recv(bufsize)
-                                    if d:
-                                        input_buffer[fd].write(d)
-                                        continue
-                                except socket.error as e:
-                                    self.logger.debug(e)
-                                    pass
-
+                        if not requests[fd]._has_more_data():
                             # We have received all data from the
                             # client. Unregister interest for further
                             # reading.
@@ -130,12 +111,13 @@ class Application(object):
 
                             # Only process this request if we have data
                             # in the input buffer.
-                            if input_buffer[fd].tell() > 0:
+                            if requests[fd]._input_buffer.tell() > 0:
                                 response = ''
                                 self.loop.register(sock, Loop.WRITE)
+
+                                """
                                 try:
-                                    request = Request(data=input_buffer[fd],
-                                                      ip=addr[0])
+                                    requests[fd]._parse()
                                 except Exception as e:
                                     # Any type of exception is considered
                                     # as an invalid request and means we're
@@ -146,26 +128,28 @@ class Application(object):
                                 else:
                                     # Delegate the request to a
                                     # RequestHandler.
-                                    response = self.handle_request(request)
+                                    response = self.handle_request(requests[fd])
 
-                                # Store the response in the output buffer so we
-                                # can send it when there is a socket available
-                                # for writing.
-                                output_buffer[fd].put(str(response))
-                                self.log_request(request, response)
-                            try:
-                                del input_buffer[fd]
-                            except KeyError:
-                                pass
+                                    # Store the response in the output buffer so we
+                                    # can send it when there is a socket available
+                                    # for writing.
+                                    requests[fd]._output_buffer.put(str(response))
+                                    self.log_request(requests[fd], response)
+                                """
+
+                                requests[fd]._parse()
+                                response = self._handle_request(requests[fd])
+                                requests[fd]._output_buffer.put(str(response))
+                                self._log_request(requests[fd], response)
+
                 # Handle outputs
                 elif mode & Loop.WRITE:
                     # This socket is available for writing.
                     try:
-                        output = output_buffer[fd].get_nowait()
+                        output = requests[fd]._output_buffer.get_nowait()
                     except Queue.Empty:
                         self.loop.unregister(sock, Loop.WRITE)
                         self.loop.close_socket(sock)
-                        del output_buffer[fd]
                     else:
                         total_sent = 0
                         while total_sent < len(output):
@@ -181,12 +165,8 @@ class Application(object):
                     self.loop.unregister(sock, Loop.READ)
                     self.loop.unregister(sock, Loop.WRITE)
                     self.loop.close_socket(sock)
-                    try:
-                        del output_buffer[fd]
-                    except KeyError:
-                        pass
 
-    def handle_request(self, request):
+    def _handle_request(self, request):
         """Iterates over self.urls to match the requested URL and stops
         after the first match.
         """
@@ -212,6 +192,7 @@ class Application(object):
                 # Return a 404.
                 return NotFoundResponse(request.url)
             else:
+                request._start_time = time.time()
                 try:
                     response = getattr(handler, method)(request,
                                                         *args,
@@ -236,7 +217,7 @@ class Application(object):
 
                     return InternalServerErrorResponse(title, subtitle, tb)
 
-    def log_request(self, request, response):
+    def _log_request(self, request, response):
         ms = '%0.2fms' % round(request.execution_time * 1000, 2)
         method = request.method if request.method in \
             RequestHandler.supported_methods else '-'
@@ -246,6 +227,6 @@ class Application(object):
             request.path,
             str(len(response.body)),
             ms,
-            '(%s)' % request.ip
+            '(%s)' % request.ip,
         ])
         self.logger.info(log)

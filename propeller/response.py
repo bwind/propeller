@@ -40,7 +40,7 @@ class Response(object):
         self.headers['Content-Length'] = len(self.body)
         if 'Content-Type' not in self.headers:
             self.headers['Content-Type'] = 'text/html; charset=utf-8'
-        status = 'HTTP/1.1 %d %s' % (self.status_code,
+        status = 'HTTP/1.0 %d %s' % (self.status_code,
                                      httplib.responses[self.status_code])
 
         headers = ['%s: %s' % (k, v) for k, v in self.headers.items()]

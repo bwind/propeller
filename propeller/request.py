@@ -116,7 +116,7 @@ class Request(object):
         return ImmutableMultiDict(values)
 
     @property
-    def execution_time(self):
+    def _execution_time(self):
         try:
             return time.time() - self._start_time
         except:

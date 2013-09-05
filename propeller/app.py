@@ -164,9 +164,8 @@ class Application(object):
         self._loop.close_socket(sock)
 
     def _handle_request(self, request):
-        """Iterates over self.urls to match the requested URL and stops
-        after the first match.
-        """
+        # Iterates over self.urls to match the requested URL and stops
+        # after the first match.
         handler = None
         for url in self.urls:
             match = re.match(url[0], request.url)
@@ -215,7 +214,7 @@ class Application(object):
                     return InternalServerErrorResponse(title, subtitle, tb)
 
     def _log_request(self, request, response):
-        ms = '%0.2fms' % round(request.execution_time * 1000, 2)
+        ms = '%0.2fms' % round(request._execution_time * 1000, 2)
         method = request.method if request.method in \
             RequestHandler.supported_methods else '-'
         log = ' '.join([

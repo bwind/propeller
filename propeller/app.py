@@ -83,8 +83,11 @@ class Application(object):
         while True:
             events = self._loop.poll()
             for sock, mode in events:
-                if mode in handlers:
+                try:
                     handlers[mode](sock)
+                except KeyError as e:
+                    self.logger.error(e)
+                    handlers[Loop.ERROR](sock)
 
     def _read_handler(self, sock):
         if sock == self._server:

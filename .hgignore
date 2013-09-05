@@ -1,8 +1,0 @@
-docs
-env
-.pyc
-.env
-.coverage
-Propeller.egg*
-build
-dist

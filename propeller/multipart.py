@@ -45,8 +45,7 @@ class MultiPartParser(object):
         name, filename, mime_type = None, None, None
 
         while True:
-            line = ib.readline().strip()
-            if not line:
+            if not ib.readline().strip():
                 # We've encountered a newline, and thus the end of the
                 # HTTP headers.
                 break

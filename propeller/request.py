@@ -111,7 +111,7 @@ class Request(object):
             except ValueError:
                 pass
             else:
-                v = urllib.unquote(v)
+                v = urllib.unquote_plus(v)
                 values.append((k, v))
         return ImmutableMultiDict(values)
 

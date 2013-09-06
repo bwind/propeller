@@ -3,6 +3,8 @@ from propeller.uploaded_file import UploadedFile
 from propeller.multipart import MultiPartParser
 
 
+datadir = 'test/data'
+
 def setup():
     pass
 
@@ -10,9 +12,8 @@ def teardown():
     pass
 
 def test_single_file():
-    data = open('test/data/file.txt')
     req = Request()
-    req._input = data
+    req._input = open('%s/file.txt' % datadir)
     req._parse()
 
     assert req.post == {}
@@ -27,4 +28,13 @@ def test_file_and_data():
     pass
 
 def test_data():
-    pass
+    expected = {
+        'text1': 'foo',
+        'text2': 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nunc porta tempus venenatis. Proin lobortis tempor ante, id ornare nisl dignissim vitae. Nullam in placerat metus.\r\n\r\nDonec nisi nisi, ultricies cursus enim ac, tempor sodales sem. Sed sit amet fermentum nisi, id fringilla libero. Praesent eget ante lacus. Nunc pretium velit est, sed lacinia eros lacinia a. Donec in neque tempus, vehicula odio ac, condimentum mi. Nulla id tristique nisi, ac consequat eros.'}
+    req = Request()
+    req._input = open('%s/data.txt' % datadir)
+    req._parse()
+
+    assert len(req.post) == 2
+    for key in expected:
+        assert req.post[key][0] == expected[key]

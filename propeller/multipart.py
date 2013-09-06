@@ -18,6 +18,10 @@ class MultiPartParser(object):
             boundary = re.match(r'.*boundary=(.*)$',
                                 self._request.headers['Content-Type'][0]).group(1)
         except Exception as e:
+            # Skip headers
+            while True:
+                if not ib.readline().strip():
+                    break
             values = []
             for pair in ib.read().split('&'):
                 try:
@@ -25,6 +29,7 @@ class MultiPartParser(object):
                 except ValueError:
                     pass
                 else:
+                    v = urllib.unquote_plus(v)
                     values.append((k, v))
             return (ImmutableMultiDict(values), [])
 

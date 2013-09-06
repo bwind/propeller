@@ -20,8 +20,8 @@ class Request(object):
         self.body = ''
 
         self._sock = sock
-        self._input_buffer = SpooledTemporaryFile(max_size=1024 * 1024 * 2)
-        self._output_buffer = Queue.Queue()
+        self._input = SpooledTemporaryFile(max_size=1024 * 1024 * 2)
+        self._output = Queue.Queue()
         self._bytes = 0
         self._content_length = 0
         self._header_data = ''
@@ -33,9 +33,9 @@ class Request(object):
         self.post = ImmutableMultiDict()
 
     def _parse(self):
-        if self._input_buffer:
-            self._input_buffer.seek(0)
-            self.method, self.path, self.protocol = self._input_buffer.readline().split(' ')
+        if self._input:
+            self._input.seek(0)
+            self.method, self.path, self.protocol = self._input.readline().split(' ')
             self.url, separator, querystring = self.path.partition('?')
 
             # Parse headers and cookies
@@ -63,7 +63,7 @@ class Request(object):
 
     def _write(self, data):
         self._bytes += len(data)
-        self._input_buffer.write(data)
+        self._input.write(data)
 
         # Only accummulate up to 16kb of possible header data
         if len(self._header_data) < 2 ** 14:
@@ -74,13 +74,13 @@ class Request(object):
                 self._content_length = int(match.group(1))
 
     def _parse_headers_and_cookies(self):
-        self._input_buffer.seek(0)
+        self._input.seek(0)
         headers = []
         cookies = []
         # Skip first line
-        self._input_buffer.readline()
+        self._input.readline()
         while True:
-            header = self._input_buffer.readline().strip()
+            header = self._input.readline().strip()
             if not header:
                 # Newline, which means end of HTTP headers.
                 break

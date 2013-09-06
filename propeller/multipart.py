@@ -10,7 +10,7 @@ class MultiPartParser(object):
         self._request = request
 
     def _parse_post_and_files(self):
-        ib = self._request._input_buffer
+        ib = self._request._input
         ib.seek(0)
         # Only parse files if we have a 'Content-Type' header with a
         # 'boundary' directive

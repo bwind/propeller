@@ -118,7 +118,7 @@ class Application(object):
 
                 # Only process this request if we have data
                 # in the input buffer.
-                if request._input_buffer.tell() > 0:
+                if request._input.tell() > 0:
                     response = ''
                     self._loop.register(sock, Loop.WRITE)
 
@@ -139,13 +139,13 @@ class Application(object):
                         # Store the response in the output buffer so we
                         # can send it when there is a socket available
                         # for writing.
-                        request._output_buffer.put(str(response))
+                        request._output.put(str(response))
                         self._log_request(request, response)
 
     def _write_handler(self, sock):
         # This socket is available for writing.
         try:
-            output = self._requests[sock.fileno()]._output_buffer.get_nowait()
+            output = self._requests[sock.fileno()]._output.get_nowait()
         except Queue.Empty:
             # We're done sending. Clean up.
             self._loop.unregister(sock, Loop.WRITE)

@@ -1,0 +1,2 @@
+GET /?foo=bar&test=hello HTTP/1.1
+Host: localhost:9999

@@ -1,8 +1,6 @@
 from propeller import Request
 from propeller.uploaded_file import UploadedFile
-
-
-datadir = 'test/data'
+from . import datadir
 
 
 def setup():

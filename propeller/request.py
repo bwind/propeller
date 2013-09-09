@@ -93,12 +93,13 @@ class Request(object):
             if fl == 'x-real-ip' or fl == 'x-forwarded-for':
                 self.ip = value.split(',')[0].strip()
             elif fl == 'cookie':
-                try:
-                    cname, cvalue = value.split('=')
-                except ValueError:
-                    pass
-                else:
-                    cookies.append(Cookie(name=cname, value=cvalue))
+                for cpair in value.split(';'):
+                    try:
+                        cname, cvalue = cpair.strip().split('=')
+                    except ValueError:
+                        pass
+                    else:
+                        cookies.append(Cookie(name=cname, value=cvalue))
             else:
                 headers.append((field, value))
         return (ImmutableMultiDict(headers), cookies)

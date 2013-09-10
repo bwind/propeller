@@ -99,3 +99,17 @@ def test_cookies():
         assert req.cookies[0].value == 'value'
         assert req.cookies[1].name == 'name2'
         assert req.cookies[1].value == 'value2'
+
+def test_x_real_ip():
+    req = Request()
+    with open('%s/x_real_ip.txt' % datadir) as f:
+        req._write(f.read())
+        req._parse()
+        assert req.ip == '9.9.9.9'
+
+def test_x_forwarded_for():
+    req = Request()
+    with open('%s/x_forwarded_for.txt' % datadir) as f:
+        req._write(f.read())
+        req._parse()
+        assert req.ip == '9.9.9.9'

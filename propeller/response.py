@@ -17,28 +17,29 @@ class Response(object):
         self.cookies = []
         self.headers['Content-Type'] = content_type
 
-    def __get_status_code(self):
-        return self.__status_code
+    def _get_status_code(self):
+        return self._status_code
 
-    def __set_status_code(self, status_code):
+    def _set_status_code(self, status_code):
         assert status_code >= 200 and status_code <= 500, \
             'status_code must be an int between 200 and 500'
-        self.__status_code = status_code
+        self._status_code = status_code
 
-    def __get_body(self):
-        return self.__body
+    def _get_body(self):
+        return self._body
 
-    def __set_body(self, body):
+    def _set_body(self, body):
         assert isinstance(body, basestring) or isinstance(body, Template), \
             'body must be an instance of basestring or Template'
         if isinstance(body, basestring):
-            self.__body = body
+            self._body = body
         elif isinstance(body, Template):
-            self.__body = str(body)
+            self._body = str(body)
 
     def _build_headers(self):
         self.headers['Content-Length'] = len(self.body)
-        if 'Content-Type' not in self.headers:
+        if 'Content-Type' not in self.headers or not \
+            self.headers['Content-Type'][0]:
             self.headers['Content-Type'] = 'text/html; charset=utf-8'
         status = 'HTTP/1.0 %d %s' % (self.status_code,
                                      httplib.responses[self.status_code])
@@ -65,8 +66,8 @@ class Response(object):
     def __str__(self):
         return self._build_headers() + self.body
 
-    status_code = property(__get_status_code, __set_status_code)
-    body = property(__get_body, __set_body)
+    status_code = property(_get_status_code, _set_status_code)
+    body = property(_get_body, _set_body)
 
 
 class RedirectResponse(Response):

@@ -6,8 +6,6 @@ import mimetypes
 
 class RequestHandler(object):
     supported_methods = ('GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'HEAD')
-    def __handle(self, method):
-        return Response('')
 
 
 class StaticFileHandler(RequestHandler):

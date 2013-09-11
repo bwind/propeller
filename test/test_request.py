@@ -1,5 +1,5 @@
 from propeller import Request
-from . import datadir
+from . import requestdir
 
 
 def setup():
@@ -10,21 +10,21 @@ def teardown():
 
 def test_message_bytes():
     req = Request()
-    req._write(open('%s/mixed.txt' % datadir).read())
+    req._write(open('%s/mixed.txt' % requestdir).read())
     req._parse()
 
     assert req._message_bytes == 22028
 
 def test_get_message_start():
     req = Request()
-    req._write(open('%s/mixed.txt' % datadir).read())
+    req._write(open('%s/mixed.txt' % requestdir).read())
     req._parse()
 
     assert req._get_message_start() == 487
 
 def test_headers():
     req = Request()
-    req._write(open('%s/mixed.txt' % datadir).read())
+    req._write(open('%s/mixed.txt' % requestdir).read())
     req._parse()
 
     headers = {
@@ -45,7 +45,7 @@ def test_headers():
 
 def test_invalid_header():
     req = Request()
-    req._write(open('%s/invalid_header.txt' % datadir).read())
+    req._write(open('%s/invalid_header.txt' % requestdir).read())
     req._parse()
 
     assert len(req.headers) == 1
@@ -53,7 +53,7 @@ def test_invalid_header():
 
 def test_get_params():
     req = Request()
-    req._write(open('%s/get_params.txt' % datadir).read())
+    req._write(open('%s/get_params.txt' % requestdir).read())
     req._parse()
 
     assert len(req.get) == 2
@@ -62,7 +62,7 @@ def test_get_params():
 
 def test_execution_time():
     req = Request()
-    req._write(open('%s/get_params.txt' % datadir).read())
+    req._write(open('%s/get_params.txt' % requestdir).read())
     req._parse()
 
     assert req._execution_time >= 0
@@ -70,7 +70,7 @@ def test_execution_time():
 def test_has_more_data():
     req = Request()
 
-    with open('%s/mixed.txt' % datadir) as f:
+    with open('%s/mixed.txt' % requestdir) as f:
         # First only write headers to request
         while True:
             line = f.readline()
@@ -90,7 +90,7 @@ def test_has_more_data():
 def test_cookies():
     req = Request()
 
-    with open('%s/cookie.txt' % datadir) as f:
+    with open('%s/cookie.txt' % requestdir) as f:
         req._write(f.read())
         req._parse()
 
@@ -102,14 +102,14 @@ def test_cookies():
 
 def test_x_real_ip():
     req = Request()
-    with open('%s/x_real_ip.txt' % datadir) as f:
+    with open('%s/x_real_ip.txt' % requestdir) as f:
         req._write(f.read())
         req._parse()
         assert req.ip == '9.9.9.9'
 
 def test_x_forwarded_for():
     req = Request()
-    with open('%s/x_forwarded_for.txt' % datadir) as f:
+    with open('%s/x_forwarded_for.txt' % requestdir) as f:
         req._write(f.read())
         req._parse()
         assert req.ip == '9.9.9.9'

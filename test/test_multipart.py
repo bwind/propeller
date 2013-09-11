@@ -1,6 +1,6 @@
 from propeller import Request
 from propeller.uploaded_file import UploadedFile
-from . import datadir
+from . import requestdir
 
 
 def setup():
@@ -11,7 +11,7 @@ def teardown():
 
 def test_single_file():
     req = Request()
-    req._input = open('%s/file.txt' % datadir)
+    req._input = open('%s/file.txt' % requestdir)
     req._parse()
 
     assert req.post == {}
@@ -21,7 +21,7 @@ def test_single_file():
 
 def test_multiple_files():
     req = Request()
-    req._input = open('%s/files.txt' % datadir)
+    req._input = open('%s/files.txt' % requestdir)
     req._parse()
 
     assert len(req.post) == 0
@@ -37,7 +37,7 @@ def test_multiple_files():
 
 def test_file_and_data():
     req = Request()
-    req._input = open('%s/mixed.txt' % datadir)
+    req._input = open('%s/mixed.txt' % requestdir)
     req._parse()
 
     assert len(req.post) == 1
@@ -51,7 +51,7 @@ def test_file_and_data():
 
 def test_data():
     req = Request()
-    req._input = open('%s/data.txt' % datadir)
+    req._input = open('%s/data.txt' % requestdir)
     req._parse()
 
     expected = {

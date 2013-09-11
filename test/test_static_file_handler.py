@@ -23,3 +23,9 @@ def test_static_file_handler_404():
     handler = StaticFileHandler()
     response = handler.get(req, 'doesnotexist.jpg', staticdir)
     assert response.status_code == 404
+
+def test_static_file_handler_directory():
+    req = Request()
+    handler = StaticFileHandler()
+    response = handler.get(req, 'empty', staticdir)
+    assert response.status_code == 404

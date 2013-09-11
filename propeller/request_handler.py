@@ -11,7 +11,7 @@ class RequestHandler(object):
 class StaticFileHandler(RequestHandler):
     def get(self, request, path, static_path):
         loc = os.path.join(static_path, path)
-        if not loc.startswith(static_path) or not os.path.exists(loc):
+        if not loc.startswith(static_path) or not os.path.isfile(loc):
             return NotFoundResponse()
         r = Response(open(loc).read())
         mime = mimetypes.guess_type(loc)
